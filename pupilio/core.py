@@ -156,10 +156,14 @@ class Pupilio:
             ctypes.c_int,
             np.ctypeslib.ndpointer(dtype=np.float32, ndim=1, flags='C_CONTIGUOUS'),
         ]
+
+        self._et_native_lib.pupil_io_set_simulation_mode.argtypes = [ctypes.c_bool]
+        self._et_native_lib.pupil_io_set_simulation_mode.restype = ctypes.c_int
         self._et_native_lib.pupil_io_set_kappa_filter.argtypes = [ctypes.c_int]
         self._et_native_lib.pupil_io_set_log.argtypes = [ctypes.c_int, ctypes.c_char_p]
         self._et_native_lib.pupil_io_set_eye_mode.argtypes = [ctypes.c_int]
 
+        self._et_native_lib.pupil_io_set_simulation_mode(config.simulation_mode)
         version = self._et_native_lib.pupil_io_get_version()
         print("Native Pupilio Version:", version.decode("gbk"))
         # set tracking eye

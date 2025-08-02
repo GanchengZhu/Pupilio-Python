@@ -138,7 +138,7 @@ Obtains separate gaze estimation information for the left and right eyes.
 +   `pt_l`: Array of 14 floats for left eye gaze information:
     
     +   `pt_l[0]` - Left eye gaze position x (0~1920)
-    +   `pt_l[1]` - Left eye gaze position y (0~1920)
+    +   `pt_l[1]` - Left eye gaze position y (0~1080)
     +   `pt_l[2]` - Left eye pupil diameter (0~10) mm
     +   `pt_l[3]` - Left eye pupil position x
     +   `pt_l[4]` - Left eye pupil position y
@@ -154,7 +154,7 @@ Obtains separate gaze estimation information for the left and right eyes.
 +   `pt_r`: Array of 14 floats for right eye gaze information:
     
     +   `pt_r[0]` - Right eye gaze position x (0~1920)
-    +   `pt_r[1]` - Right eye gaze position y (0~1920)
+    +   `pt_r[1]` - Right eye gaze position y (0~1080)
     +   `pt_r[2]` - Right eye pupil diameter (0~10) mm
     +   `pt_r[3]` - Right eye pupil position x
     +   `pt_r[4]` - Right eye pupil position y

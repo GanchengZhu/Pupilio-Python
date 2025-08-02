@@ -95,6 +95,10 @@ class DefaultConfig:
 
         Active Eye:
             - `active_eye` (str): Which one or two eyes you want to track.`
+
+        Simulation mode:
+            - `simulation_mode` (bool): Switch of simulation mode. If true, use your mouse to replace the eye position.
+                Default is false.
     """
 
     def __init__(self):
@@ -205,6 +209,8 @@ class DefaultConfig:
 
         self.active_eye = ActiveEye.BINO_EYE
 
+        self._simulation_mode = False
+
     @property
     def cali_mode(self):
         return self._cali_mode
@@ -243,6 +249,23 @@ class DefaultConfig:
         else:
             raise ValueError("Invalid tracking mode. Must be 0 (bino), -1 (left eye), "
                              "1 (right eye), left, right, or bino.")
+
+    @property
+    def simulation_mode(self):
+        return self._simulation_mode
+
+    @simulation_mode.setter
+    def simulation_mode(self, value):
+        if isinstance(value, bool):
+            pass  # OK
+        elif isinstance(value, int):
+            if value not in (0, 1):
+                raise TypeError(f"simulation_mode must be a bool or 0/1, got {type(value).__name__}")
+            value = bool(value)  # 宽容处理 0/1
+        else:
+            raise TypeError(f"simulation_mode must be a bool or 0/1, got {type(value).__name__}")
+
+        self._simulation_mode = value
 
     def instruction_language(self, lang='zh-CN'):
         """
