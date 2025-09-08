@@ -1,6 +1,7 @@
 # Overview
 
 This document provides a detailed description of the API functions provided by the Deep Gaze library. This library allows for the initialization, calibration, and querying of eye gaze information.
+If you want to develop with C++, please contact zhugc2016#gmail.com (replace # with @) for C++ libraries and headers.
 
 # Enum Definitions
 
@@ -16,10 +17,10 @@ The `ET_ReturnCode` enum defines possible return codes for the API functions:
 
 # API Functions
 
-## `deep_gaze_init`
+## `pupil_io_init`
 
 ```cpp
-ET_ReturnCode deep_gaze_init();
+ET_ReturnCode pupil_io_init();
 ```
 
 **Description:**
@@ -33,10 +34,10 @@ Initializes the Deep Gaze system.
 
 * * *
 
-## `deep_gaze_face_pos`
+## `pupil_io_face_pos`
 
 ```cpp
-ET_ReturnCode deep_gaze_face_pos(float* eyepos);
+ET_ReturnCode pupil_io_face_pos(float* eyepos);
 ```
 
 **Description:**
@@ -65,10 +66,10 @@ Retrieves the user's face position.
 
 * * *
 
-## `deep_gaze_cali`
+## `pupil_io_cali`
 
 ```cpp
-ET_ReturnCode deep_gaze_cali(const int cali_point_id);
+ET_ReturnCode pupil_io_cali(const int cali_point_id);
 ```
 
 **Description:**
@@ -88,10 +89,10 @@ Performs calibration at a specific point.
 
 * * *
 
-## `deep_gaze_est`
+## `pupil_io_est`
 
 ```cpp
-ET_ReturnCode deep_gaze_est(float* pt, long long* timeStamp);
+ET_ReturnCode pupil_io_est(float* pt, long long* timeStamp);
 ```
 
 **Description:**
@@ -123,10 +124,10 @@ Obtains gaze estimation information.
 
 * * *
 
-## `deep_gaze_est_lr`
+## `pupil_io_est_lr`
 
 ```cpp
-ET_ReturnCode deep_gaze_est_lr(float* pt_l, float* pt_r, long long* timeStamp);
+ET_ReturnCode pupil_io_est_lr(float* pt_l, float* pt_r, long long* timeStamp);
 ```
 
 **Description:**
@@ -177,10 +178,10 @@ Obtains separate gaze estimation information for the left and right eyes.
 
 * * *
 
-## `deep_gaze_release`
+## `pupil_io_release`
 
 ```cpp
-ET_ReturnCode deep_gaze_release();
+ET_ReturnCode pupil_io_release();
 ```
 
 **Description:**
@@ -192,10 +193,10 @@ Releases resources and performs cleanup when the program exits.
 +   `ET_SUCCESS` on successful release.
 +   Other `ET_ReturnCode` values indicate failure or special conditions.
 
-## `deep_gaze_get_version`
+## `pupil_io_get_version`
 
 ```cpp
-const char *deep_gaze_get_version();
+const char *pupil_io_get_version();
 ```
 
 **Description:**
@@ -206,10 +207,10 @@ Retrieves the version information of the Deep Gaze library.
 
 +   A const char* representing the version string of the library.
 
-## `deep_gaze_set_look_ahead`
+## `pupil_io_set_look_ahead`
 
 ```cpp
-ET_ReturnCode deep_gaze_set_look_ahead(int look_ahead);
+ET_ReturnCode pupil_io_set_look_ahead(int look_ahead);
 ```
 
 **Description:**
@@ -224,10 +225,10 @@ Sets the look-ahead parameter, which defines the number of future frames the sys
 
 +   `ET_SUCCESS` on successful parameter update. Other ET_ReturnCode values indicate failure or invalid input.
 
-## `deep_gaze_set_log`
+## `pupil_io_set_log`
 
 ```cpp
-ET_ReturnCode deep_gaze_set_log(int valid, char *log_Path);
+ET_ReturnCode pupil_io_set_log(int valid, char *log_Path);
 ```
 
 **Description:**
@@ -245,10 +246,10 @@ log_Path: A pointer to a character array specifying the path to the log file.
 Other ET_ReturnCode values indicate failure or invalid parameters.
 
 
-## `deep_gaze_recalibrate`
+## `pupil_io_recalibrate`
 
 ```cpp
-ET_ReturnCode deep_gaze_recalibrate();
+ET_ReturnCode pupil_io_recalibrate();
 ```
 
 **Description:**
@@ -260,10 +261,10 @@ Triggers recalibration of the gaze tracking system to improve accuracy.
 +   `ET_SUCCESS` if recalibration is completed successfully.
 Other ET_ReturnCode values indicate failure or an inability to recalibrate.
 
-## `deep_gaze_face_image`
+## `pupil_io_face_image`
 
 ```cpp
-ET_ReturnCode deep_gaze_face_image(char **image_data, int *width, int *height);
+ET_ReturnCode pupil_io_face_image(char **image_data, int *width, int *height);
 ```
 
 **Description:**
@@ -283,10 +284,10 @@ Returns:
 Other ET_ReturnCode values indicate failure or lack of image data.
 
 
-## `deep_gaze_set_cali_mode`
+## `pupil_io_set_cali_mode`
 
 ```cpp
-ET_ReturnCode deep_gaze_set_cali_mode(int mode, float *cali_points);
+ET_ReturnCode pupil_io_set_cali_mode(int mode, float *cali_points);
 ```
 
 **Description:**

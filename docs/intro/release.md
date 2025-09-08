@@ -1,11 +1,53 @@
-# Release Note
+# Pupilio SDK Update Log
 
-## Version 1.2.2 (Build 1) - 2024-12-09
+## Version 1.3.1 (Build 1) - 2025-09-08
 
+- Updated the DLL to support gaze simulation mode using the mouse, allowing you to debug your program on any Windows PC.
+
+## Version 1.3.0 (Build 1) - 2025-06-29
+
+- Updated the DLL to better support single/bino eye-tracking.
+- Update the calibration graphics (Pygame and Psychopy) to support single/bino eye gaze tracking.
+- Output the estimated optical axes before calibration.
+
+## Version 1.2.8 (Build 1) - 2025-06-23
+
+- Fix `invalid destination position for blit` error in Line 630 of `graphics_pygame.py`.
+- Support single eye gaze tracking.
+- Adjust the output of optical axes.
+
+## Version 1.2.7 (Build 1) - 2025-04-15
+
+- Minor bug: fix `pupil_io_get_current_gaze` function.
+
+## Version 1.2.6 (Build 1) - 2025-03-30
+
+- Improve UI.
+
+## Version 1.2.5 (Build 1) - 2025-02-11
+
+- Fix native library bugs.
+
+## Version 1.2.4 (Build 1) - 2025-01-07
+
+- Fixed a potential crash bug in pygame calibration.
+- Fixed an issue with the `CalibrationListener` callback.
+- Improved the calibration UI.
+
+## Version 1.2.3 (Build 1) - 2024-12-12
+
+- Added `enable_kappa_verify`, `enable_debug`, and `log_dir` to `DefaultConfig`.
+- Updated `previewer_demo` and renamed the old version to `previewer_demo_legacy.py`.
+- Reduced native library calibration time.
+- Added preview images to calibration UI.
 - Improve UX design of demonstrations.
 - Added five calibration mode in `graphics.py` and `graphics_pygame.py`.
 - Added `_et_native_lib.pupil_io_set_cali_mode` function signature.
 - Updated `docs`.
+- Added previewer function on calibration.
+- Added multiple international language.
+- Added calibration callbacks
+- Update default config
 
 ---
 
