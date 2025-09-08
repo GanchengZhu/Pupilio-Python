@@ -1,4 +1,10 @@
 # Pupilio SDK Update Log
+
+## Version 1.3.1 (Build 1) - 2025-09-08
+
+- Updated the DLL to support gaze simulation mode using the mouse, allowing you to debug your program on any Windows PC.
+
+
 ## Version 1.3.0 (Build 1) - 2025-06-29
 
 - Updated the DLL to better support single/bino eye-tracking.
