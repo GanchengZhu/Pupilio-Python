@@ -27,10 +27,10 @@
 
 | Attribute                | Specification                                 |
 |--------------------------|-----------------------------------------------|
-| Sample Rate              | 200 Hz        |
-| Accuracy                 | 0.5-1°                                          |
+| Sample Rate              | 200 Hz                                        |
+| Accuracy                 | 0.5-1°                                        |
 | Precision                | 0.03°                                         |
-| Blink/Occlusion Recovery | 5 ms @ 200 Hz                |
+| Blink/Occlusion Recovery | 5 ms @ 200 Hz                                 |
 | Head Box                 | 40 cm x 40 cm @ 70 cm                         |
 | Operation Range          | 50 - 90 cm                                    |
 | Gaze Signal Delay        | < 25 ms                                       |

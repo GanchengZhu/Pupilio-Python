@@ -14,19 +14,20 @@ Pupilio is a lightweight package developed by Hangzhou Shenning Technology Co., 
 
 ## Specifications of Eye Tracker
 
-| Attribute                | Specification         |
-|--------------------------|-----------------------|
-| Sample Rate              | 200 Hz                |
-| Accuracy                 | 0.5°                  |
-| Precision                | 0.03°                 |
-| Blink/Occlusion Recovery | 5 ms @ 200 Hz         |
-| Head Box                 | 40 cm x 40 cm @ 70 cm |
-| Operation Range          | 50 - 90 cm            |
-| Gaze Signal Delay        | < 6 ms                |
-| Tracking Technology      | Neural Network        |
-| Dimension                | 32 cm x 45 cm x 20 cm |
-| Weight                   | 5 kg                  |
-| Operating System         | Windows 11            |
-| SDK                      | C/Python              |
+| Attribute                | Specification                                 |
+|--------------------------|-----------------------------------------------|
+| Sample Rate              | 200 Hz                                        |
+| Accuracy                 | 0.5-1°                                        |
+| Precision                | 0.03°                                         |
+| Blink/Occlusion Recovery | 5 ms @ 200 Hz                                 |
+| Head Box                 | 40 cm x 40 cm @ 70 cm                         |
+| Operation Range          | 50 - 90 cm                                    |
+| Gaze Signal Delay        | < 25 ms                                       |
+| Tracking Technology      | Neural Networks                               |
+| Dimension                | 32 cm x 45 cm x 20 cm                         |
+| Weight                   | 5 kg [Eye-tracker + Display + Compute Module] |
+| Operating System         | Windows 11                                    |
+| SDK                      | C/C++/Python/Matlab                           |
+
 
 
