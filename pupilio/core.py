@@ -84,7 +84,10 @@ class Pupilio:
             os.add_dll_directory(_lib_dir)
             os.environ['PATH'] = os.environ['PATH'] + ';' + _lib_dir
             # dll
-            _dll_path = os.path.join(_lib_dir, 'PupilioET.dll')
+            if self.config.simulation_mode:
+                _dll_path = os.path.join(_lib_dir, 'DummyPupilioET.dll')
+            else:
+                _dll_path = os.path.join(_lib_dir, 'PupilioET.dll')
             self._et_native_lib = ctypes.CDLL(_dll_path, winmode=0)
 
         else:
@@ -157,13 +160,13 @@ class Pupilio:
             np.ctypeslib.ndpointer(dtype=np.float32, ndim=1, flags='C_CONTIGUOUS'),
         ]
 
-        self._et_native_lib.pupil_io_set_simulation_mode.argtypes = [ctypes.c_bool]
-        self._et_native_lib.pupil_io_set_simulation_mode.restype = ctypes.c_int
+        # self._et_native_lib.pupil_io_set_simulation_mode.argtypes = [ctypes.c_bool]
+        # self._et_native_lib.pupil_io_set_simulation_mode.restype = ctypes.c_int
         self._et_native_lib.pupil_io_set_kappa_filter.argtypes = [ctypes.c_int]
         self._et_native_lib.pupil_io_set_log.argtypes = [ctypes.c_int, ctypes.c_char_p]
         self._et_native_lib.pupil_io_set_eye_mode.argtypes = [ctypes.c_int]
 
-        self._et_native_lib.pupil_io_set_simulation_mode(self.config.simulation_mode)
+        # self._et_native_lib.pupil_io_set_simulation_mode(self.config.simulation_mode)
         version = self._et_native_lib.pupil_io_get_version()
         print("Native Pupilio Version:", version.decode("gbk"))
         # set tracking eye
@@ -711,8 +714,8 @@ class Pupilio:
                     FRAME_COLOR = FRAME_WARNING
                     continue  # skip invalid frame
 
-                if w==0 or h==0: # empty eye-patch when tracking monocularly
-                    patch = img[0:96,0:96]
+                if w == 0 or h == 0:  # empty eye-patch when tracking monocularly
+                    patch = img[0:96, 0:96]
                 else:
                     patch = img[y1:y2, x1:x2]  # clip the eye patch
 
@@ -721,7 +724,7 @@ class Pupilio:
                 glint_x, glint_y = glint_center_list[img_idx][patch_idx]
 
                 if not (x1 <= pupil_x < x2 and y1 <= pupil_y < y2):
-                    if not (patch_mask_index==patch_idx):
+                    if not (patch_mask_index == patch_idx):
                         FRAME_COLOR = FRAME_WARNING
                     # print(f"Invalid pupil center at img {img_idx}, rect {patch_idx}: ({pupil_x}, {pupil_y})")
                     pupil_x, pupil_y = None, None  # invalid pupil center
@@ -729,7 +732,7 @@ class Pupilio:
                     pupil_x, pupil_y = int(pupil_x - x1), int(pupil_y - y1)
 
                 if not (x1 <= glint_x < x2 and y1 <= glint_y < y2):
-                    if not (patch_mask_index==patch_idx):
+                    if not (patch_mask_index == patch_idx):
                         FRAME_COLOR = FRAME_WARNING
                     # print(f"Invalid glint center at img {img_idx}, rect {patch_idx}: ({glint_x}, {glint_y})")
                     glint_x, glint_y = None, None  # invalid glint
@@ -744,7 +747,7 @@ class Pupilio:
                     cv2.circle(patch, (glint_x, glint_y), 3, (0, 255, 0), -1)
 
                 # draw rect on image
-                if w==0 or h==0:
+                if w == 0 or h == 0:
                     pass
                 else:
                     cv2.rectangle(patch, (0, 0), (patch.shape[1] - 1, patch.shape[0] - 1), FRAME_COLOR, 6)
@@ -773,9 +776,8 @@ class Pupilio:
                 start_y = (canvas_h - new_h) // 2
 
                 # draw scaled patch on canvas
-                if not rect_idx==patch_mask_index:
+                if not rect_idx == patch_mask_index:
                     eyes_canvas[canvas_idx][rect_idx][start_y:start_y + new_h, start_x:start_x + new_w] = resized_patch
-
 
         for idx in range(2):
             original_img = imgs[idx]
