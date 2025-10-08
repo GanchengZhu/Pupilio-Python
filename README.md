@@ -102,6 +102,33 @@ pupil_io.release()
 pygame.quit()
 ```
 
+## Preprocessing for eye tracking data
+
+Detect fixations and saccades using the **I-DT** (Identification by Dispersion Threshold) algorithm.  
+The I-DT algorithm identifies fixations as groups of consecutive samples where the  
+dispersion (sum of x and y ranges) remains below a specified threshold for a minimum duration.
+
+**Example:**
+
+```python
+import glob
+import os
+
+from pupilio import EventDetection
+
+ed = EventDetection()
+
+out_dir = 'output'
+os.makedirs(out_dir, exist_ok=True)
+f = open('error.txt', 'w')
+for i in glob.glob(r'example.csv'):
+    try:
+        ed.detect(i, output_dir=out_dir, which_eye='right')
+    except Exception as e:
+        f.write(i + ',' + str(e) + '\n')
+        f.flush()
+```
+
 ## Documentation
 
 Comprehensive documentation is available at Pupilio [Documentation](https://pupilio.readthedocs.io/en/latest/start/demo.html).
