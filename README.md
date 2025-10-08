@@ -104,8 +104,7 @@ pygame.quit()
 
 ## Preprocessing for eye tracking data
 
-Detect fixations and saccades using the **I-DT** (Identification by Dispersion Threshold) algorithm.  
-The I-DT algorithm identifies fixations as groups of consecutive samples where the  
+Detect fixations and saccades using the **I-DT** (Identification by Dispersion Threshold) algorithm. The I-DT algorithm identifies fixations as groups of consecutive samples where the  
 dispersion (sum of x and y ranges) remains below a specified threshold for a minimum duration.
 
 **Example:**
