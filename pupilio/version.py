@@ -34,7 +34,7 @@
 
 _major_version = '1'
 _minor_version = '3'
-_patch_version = '1'
+_patch_version = '2'
 
 __version__ = f'{_major_version}.{_minor_version}.{_patch_version}'
 

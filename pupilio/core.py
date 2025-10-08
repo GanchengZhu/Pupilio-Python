@@ -460,8 +460,14 @@ class Pupilio:
         Set the trigger.
 
         Args:
-            trigger: The trigger to set.
+            trigger: The trigger to set. Range: 1 - 65535
         """
+        if isinstance(trigger, int):
+            raise TypeError("Trigger must be an integer.")
+
+        if trigger < 1 or trigger > 65535:
+            raise ValueError("Trigger must be between 1 and 65535")
+
         return self._et_native_lib.pupil_io_send_trigger(trigger)
 
     def set_filter_enable(self, status: bool) -> int:

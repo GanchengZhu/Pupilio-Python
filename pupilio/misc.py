@@ -71,7 +71,10 @@ class ET_ReturnCode(IntEnum):
     ET_SUCCESS = 0  # Successful, can proceed to the next scenario
     ET_CALI_CONTINUE = 1  # Calibration ongoing, continue with current calibration point
     ET_CALI_NEXT_POINT = 2  # Calibration ongoing, switch to next calibration point
+    ET_INVALID_PATH = 3
+    ET_INVALID_PARAM = 4
     ET_FAILED = 9  # Operation failed
+    ET_EXCEPTION = 10
 
 
 class CalibrationMode(IntEnum):

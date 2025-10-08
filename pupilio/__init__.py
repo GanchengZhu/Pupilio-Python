@@ -33,8 +33,9 @@
 # Email: zhugc2016@gmail.com
 
 from .core import Pupilio
+from .default_config import DefaultConfig
+from .event_detection import EventDetection
 from .misc import EventType, ET_ReturnCode, CalibrationMode
 from .version import __version__
-from .default_config import DefaultConfig
 
 print(f"Pupilio version: {__version__}.")
