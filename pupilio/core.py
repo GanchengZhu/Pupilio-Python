@@ -462,7 +462,7 @@ class Pupilio:
         Args:
             trigger: The trigger to set. Range: 1 - 65535
         """
-        if isinstance(trigger, int):
+        if not isinstance(trigger, int):
             raise TypeError("Trigger must be an integer.")
 
         if trigger < 1 or trigger > 65535:
