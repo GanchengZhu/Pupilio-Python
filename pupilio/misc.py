@@ -218,12 +218,9 @@ class Calculator:
 
         """
 
-        min_error = 1E9
-        min_error_es_point = None
-        if es_points is None or len(es_points) < 5:
-            return None
-
-        else:
+        min_error = float("inf")
+        min_error_es_point = (0, 0)
+        try:
             error_list = [self.error(gt_pixel=gt_point, es_pixel=es_points[n],
                                      distance=distances[n]) for n in range(len(es_points))]
 
@@ -232,9 +229,11 @@ class Calculator:
                 if min_error > error:
                     min_error = error
                     min_error_es_point = np.mean(es_points[i:i + 5], axis=0)
-        return {"min_error": min_error, "min_error_es_point": min_error_es_point, "gt_point": gt_point
-                }
-
+            return {"min_error": min_error, "min_error_es_point": min_error_es_point, "gt_point": gt_point
+                    }
+        except Exception as e:
+            print(f"[Error] calculate_error_by_sliding_window: {e}")
+            return {"min_error": float("inf"), "min_error_es_point": (0, 0), "gt_point": gt_point}
 
 class Queue:
     def __init__(self, cache_size=2):
