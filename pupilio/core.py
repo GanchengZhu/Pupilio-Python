@@ -168,7 +168,11 @@ class Pupilio:
         print("Native Pupilio Version:", version.decode("gbk"))
         # set tracking eye
         self._et_native_lib.pupil_io_set_eye_mode(self.config.active_eye.value)
+
         # set filter parameter: look ahead
+        if not (isinstance(config.look_ahead, int) and (0 < config.look_ahead <= 4)):
+            raise ValueError("Parameter `look_ahead` must be between 0 and 4 and integer")
+
         self._et_native_lib.pupil_io_set_look_ahead(self.config.look_ahead)
         # set enable kappa verify
         self._et_native_lib.pupil_io_set_kappa_filter(self.config.enable_kappa_verification)
@@ -468,7 +472,10 @@ class Pupilio:
         if trigger < 1 or trigger > 65535:
             raise ValueError("Trigger must be between 1 and 65535")
 
-        return self._et_native_lib.pupil_io_send_trigger(trigger)
+        if self._et_native_lib.pupil_io_send_trigger(trigger) == ET_ReturnCode.ET_SUCCESS:
+            return ET_ReturnCode.ET_SUCCESS
+        else:
+            raise Exception("Please don't call `set_trigger` function too frequently.")
 
     def set_filter_enable(self, status: bool) -> int:
         """
