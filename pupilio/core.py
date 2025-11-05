@@ -846,7 +846,6 @@ class Pupilio:
 
         preview_imgs = self._process_images(preview_left_img, preview_right_img, eye_rects, pupil_centers,
                                             glint_centers)
-
         return preview_imgs
 
     def _recalibration(self) -> int:

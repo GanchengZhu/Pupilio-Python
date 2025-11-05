@@ -154,7 +154,7 @@ class DefaultConfig:
         # Verification of the kappa angle after calibration, default is 1 (verify the estimated kappa angle).
         # When this value is 0, the verification of the kappa angle after calibration
         # is disabled, allowing calibration for users with strabismus.
-        self.enable_kappa_verification = 1
+        self.enable_kappa_verification = 0
 
         # calibration listener
         self.calibration_listener: CalibrationListener = CalibrationListener()
