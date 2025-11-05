@@ -400,7 +400,8 @@ class CalibrationUI(object):
             _tracking_left = self._pupil_io.config.active_eye in [-1, 'left', 0, 'bino']
             _tracking_right = self._pupil_io.config.active_eye in [1, 'right', 0, 'bino']
 
-            if (len(_left_samples) <= 5 and _tracking_left) or (len(_right_samples) <= 5 and _tracking_right):  # 小于五个样本点，说明该点需要重新校准
+            if (len(_left_samples) <= 5 and _tracking_left) or (
+                    len(_right_samples) <= 5 and _tracking_right):  # 小于五个样本点，说明该点需要重新校准
                 # less than ten samples collected
                 self._validation_left_sample_store[idx] = []
                 self._validation_left_eye_distance_store[idx] = []
@@ -463,15 +464,14 @@ class CalibrationUI(object):
                     if __time_elapsed > 3:
                         self._phase_validation = False
 
-                # save validation results to a json file
-                current_directory = Path.cwd()
-                _calibrationDir = current_directory / "calibration" / self._pupil_io._session_name
-                _calibrationDir.mkdir(parents=True, exist_ok=True)
+                if self.config.enable_validation_result_saving and not self._drawing_validation_result:
+                    # save validation results to a json file
+                    current_directory = Path.cwd()
+                    _calibrationDir = current_directory / "calibration" / self._pupil_io._session_name
+                    _calibrationDir.mkdir(parents=True, exist_ok=True)
 
-                _currentTime = datetime.now()
-                _timeString = _currentTime.strftime("%Y-%m-%d_%H-%M-%S")
-
-                if self.config.enable_validation_result_saving:
+                    _currentTime = datetime.now()
+                    _timeString = _currentTime.strftime("%Y-%m-%d_%H-%M-%S")
                     with _calibrationDir.joinpath(f"{_timeString}.json").open('w') as handle:
                         json.dump({
                             "validation_left_samples": self._validation_left_sample_store,
@@ -684,8 +684,8 @@ class CalibrationUI(object):
         else:
             _face_x_offset = 0
 
-        _eyebrow_center_point[0] = self._screen.get_width()//2 + (_face_pos_x - 172.08 + _face_x_offset) * 10
-        _eyebrow_center_point[1] = self._screen.get_height()//2 + (_face_pos_y - 96.79) * 10
+        _eyebrow_center_point[0] = self._screen.get_width() // 2 + (_face_pos_x - 172.08 + _face_x_offset) * 10
+        _eyebrow_center_point[1] = self._screen.get_height() // 2 + (_face_pos_y - 96.79) * 10
 
         # Update rectangle color based on face point inside the rectangle
         if self._face_in_rect.collidepoint(_eyebrow_center_point):

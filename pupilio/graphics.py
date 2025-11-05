@@ -91,10 +91,10 @@ class CalibrationUI(object):
 
         self._LEFT_PREVIEWER_POS = [
             self._PREVIEWER_IMG_WIDTH // 2 + 79,
-            self._screen_height//2]
+            self._screen_height // 2]
         self._RIGHT_PREVIEWER_POS = [
             self._screen_width - self._PREVIEWER_IMG_WIDTH // 2 - 79,
-            self._screen_height//2]
+            self._screen_height // 2]
 
         # self._screen = visual.Window(
         #     size=(self._screen_width, self._screen_height),
@@ -482,7 +482,7 @@ class CalibrationUI(object):
             self._n_validation = 2
 
     def _draw_validation_point(self):
-        """tracker validation processw"""
+        """tracker validation process"""
 
         # the validation process is completed if there is no point in the pos list
         if not self._calibration_drawing_list:
@@ -499,16 +499,16 @@ class CalibrationUI(object):
                     if __time_elapsed > 1.5:
                         self._phase_validation = False
 
-                # save validation results to a json file
-                current_directory = Path.cwd()
-                _calibrationDir = current_directory / "calibration" / self._pupil_io._session_name
-                _calibrationDir.mkdir(parents=True, exist_ok=True)
-
-                # use a time string name the calibration results file
-                _currentTime = datetime.now()
-                _timeString = _currentTime.strftime("%Y-%m-%d_%H-%M-%S")
                 # dump data into a json file
-                if self.config.enable_validation_result_saving:
+                if self.config.enable_validation_result_saving and not self._drawing_validation_result:
+                    # save validation results to a json file
+                    current_directory = Path.cwd()
+                    _calibrationDir = current_directory / "calibration" / self._pupil_io._session_name
+                    _calibrationDir.mkdir(parents=True, exist_ok=True)
+
+                    # use a time string name the calibration results file
+                    _currentTime = datetime.now()
+                    _timeString = _currentTime.strftime("%Y-%m-%d_%H-%M-%S")
                     with _calibrationDir.joinpath(f"{_timeString}.json").open('w') as handle:
                         json.dump({
                             "validation_left_samples": self._validation_left_sample_store,
@@ -694,7 +694,6 @@ class CalibrationUI(object):
         self._left_previewer_img_stim.draw()
         self._right_previewer_img_stim.draw()
 
-
     def _draw_adjust_position(self):
         if (not self._just_pos_sound_once):
             if self._hands_free:
@@ -803,7 +802,7 @@ class CalibrationUI(object):
 
     def _draw_segment_text(self, text, x, y):
         _segment_text = text.split("\n")
-        self._txt._wrapWidthPix= 960
+        self._txt._wrapWidthPix = 960
         _shift = 0
         for t in _segment_text:
             self._txt.text = t
@@ -828,7 +827,7 @@ class CalibrationUI(object):
             _rest = f"{int(10 - _time_elapsed)}"
             print(_rest)
             for n, _character in enumerate(_rest):
-                self._clock_resource_dict[_character].pos=(0, 200)
+                self._clock_resource_dict[_character].pos = (0, 200)
                 self._clock_resource_dict[_character].draw()
         else:
             self._calibration_preparing = False
