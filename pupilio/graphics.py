@@ -576,7 +576,7 @@ class CalibrationUI(object):
             else:
                 _pos_idx = self._calibration_drawing_list[-1]
                 _point = self._validation_points[_pos_idx]
-                _status, _left_sample, _right_sample, _timestamp, _marker = self._pupil_io.estimation_lr()
+                _status, _left_sample, _right_sample, _bino, _timestamp, _marker = self._pupil_io.estimate_gaze()
 
                 self._draw_animation(point=_point, time_elapsed=_time_elapsed)
 

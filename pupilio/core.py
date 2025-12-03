@@ -137,6 +137,14 @@ class Pupilio:
             np.ctypeslib.ndpointer(dtype=np.float32, ndim=1, flags='C_CONTIGUOUS'),
             ctypes.POINTER(ctypes.c_longlong)
         ]
+
+        self._et_native_lib.pupil_io_estimate_gaze.argtypes = [
+            np.ctypeslib.ndpointer(dtype=np.float32, ndim=1, flags='C_CONTIGUOUS'),
+            np.ctypeslib.ndpointer(dtype=np.float32, ndim=1, flags='C_CONTIGUOUS'),
+            np.ctypeslib.ndpointer(dtype=np.float32, ndim=1, flags='C_CONTIGUOUS'),
+            ctypes.POINTER(ctypes.c_longlong)
+        ]
+
         self._et_native_lib.pupil_io_get_previewer.argtypes = [
             ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte)),  # img_1
             ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte)),  # img_2
@@ -199,6 +207,7 @@ class Pupilio:
         self._pt = np.zeros(11, dtype=np.float32)
         self._pt_l = np.zeros(14, dtype=np.float32)
         self._pt_r = np.zeros(14, dtype=np.float32)
+        self._pt_bino = np.zeros(10, dtype=np.float32)
 
         self._previewer_thread = None
         self._online_event_detection = None
@@ -368,7 +377,7 @@ class Pupilio:
             return ET_ReturnCode.ET_FAILED
         return self._et_native_lib.pupil_io_cali(cali_point_id)
 
-    @deprecated("1.1.1")
+    @deprecated("1.1.1", "Please use function `estimate_gaze`")
     def estimation(self) -> Tuple[int, np.ndarray, int, int]:
         """
         Estimate the gaze state and position.
@@ -382,6 +391,7 @@ class Pupilio:
         trigger = 0
         return status, self._pt, timestamp.value, trigger
 
+    @deprecated("1.4.0", "Please use function `estimate_gaze`")
     def estimation_lr(self) -> Tuple[int, np.ndarray, np.ndarray, int, int]:
         """
         Estimate the gaze state and position for left and right eyes.
@@ -428,7 +438,7 @@ class Pupilio:
                 - int: Timestamp of the estimation (in milliseconds).
                 - int: Trigger value, initialized to 0.
         Example:
-            status, left_eye_sample, right_eye_sample, timestamp, trigger = instance.estimation_lr()
+            status, left_eye_sample, right_eye_sample, bino_eye_sample, timestamp, trigger = instance.estimation_lr()
             if status == ET_ReturnCode.ET_SUCCESS:
                 print("Gaze estimation successful.")
         """
@@ -436,6 +446,73 @@ class Pupilio:
         status = self._et_native_lib.pupil_io_est_lr(self._pt_l, self._pt_r, ctypes.byref(timestamp))
         trigger = 0
         return status, self._pt_l, self._pt_r, timestamp.value, trigger
+
+    def estimate_gaze(self) -> Tuple[int, np.ndarray, np.ndarray, np.ndarray, int, int]:
+        """
+        Estimate the gaze state and position for left, right, and bino eyes.
+
+        This function calls the native pupil estimation library to obtain the
+        estimated gaze points for both the left and right eyes, as well as the
+        timestamp of the estimation. The function returns the status of the
+        operation, the gaze points for the left and right eyes, the timestamp,
+        and an additional trigger value.
+
+        Returns:
+            Tuple[int, np.ndarray, np.ndarray, int, int]:
+                - int: Status code, where `ET_ReturnCode.ET_SUCCESS` indicates success.
+                - np.ndarray: Estimated gaze point for the left eye. Contains 14 elements.
+                    left_eye_sample[0]:left eye gaze position x (0~1920)
+                    left_eye_sample[1]:left eye gaze position y (0~1920)
+                    left_eye_sample[2]:left eye pupil diameter (0~10) (mm)
+                    left_eye_sample[3]:left eye pupil position x
+                    left_eye_sample[4]:left eye pupil position y
+                    left_eye_sample[5]:left eye pupil position z
+                    left_eye_sample[6]:left eye visual angle in spherical: theta
+                    left_eye_sample[7]:left eye visual angle in spherical: phi
+                    left_eye_sample[8]:left eye visual angle in vector: x
+                    left_eye_sample[9]:left eye visual angle in vector: y
+                    left_eye_sample[10]:left eye visual angle in vector: z
+                    left_eye_sample[11]:left eye pix per degree x
+                    left_eye_sample[12]:left eye pix per degree y
+                    left_eye_sample[13]:left eye valid (0:invalid 1:valid)
+                - np.ndarray: Estimated gaze point for the right eye. Contains 14 elements.
+                    right_eye_sample[0]:right eye gaze position x (0~1920)
+                    right_eye_sample[1]:right eye gaze position y (0~1920)
+                    right_eye_sample[2]:right eye pupil diameter (0~10) (mm)
+                    right_eye_sample[3]:right eye pupil position x
+                    right_eye_sample[4]:right eye pupil position y
+                    right_eye_sample[5]:right eye pupil position z
+                    right_eye_sample[6]:right eye visual angle in spherical: theta
+                    right_eye_sample[7]:right eye visual angle in spherical: phi
+                    right_eye_sample[8]:right eye visual angle in vector: x
+                    right_eye_sample[9]:right eye visual angle in vector: y
+                    right_eye_sample[10]:right eye visual angle in vector: z
+                    right_eye_sample[11]:right eye pix per degree x
+                    right_eye_sample[12]:right eye pix per degree y
+                    right_eye_sample[13]:right eye valid (0:invalid 1:valid)
+                 - np.ndarray: Estimated gaze point for the bino eye. Contains 9 elements.
+                    bino_eye_sample[0]: bino eye gaze position x (0~1920)
+                    bino_eye_sample[1]: bino eye gaze position y (0~1920)
+                    bino_eye_sample[2]: nil
+                    bino_eye_sample[3]: nil
+                    bino_eye_sample[4]: nil
+                    bino_eye_sample[5]: nil
+                    bino_eye_sample[6]: nil
+                    bino_eye_sample[7]: nil
+                    bino_eye_sample[8]: nil
+                    bino_eye_sample[9]: nil
+                - int: Timestamp of the estimation (in milliseconds).
+                - int: Trigger value, initialized to 0.
+        Example:
+            status, left_eye_sample, right_eye_sample, bino_eye_sample, timestamp, trigger = instance.estimation_lr()
+            if status == ET_ReturnCode.ET_SUCCESS:
+                print("Gaze estimation successful.")
+        """
+        timestamp = ctypes.c_longlong()
+        status = self._et_native_lib.pupil_io_estimate_gaze(self._pt_l, self._pt_r, self._pt_bino,
+                                                            ctypes.byref(timestamp))
+        trigger = 0
+        return status, self._pt_l, self._pt_r, self._pt_bino, timestamp.value, trigger
 
     def release(self) -> int:
         """

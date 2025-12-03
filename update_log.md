@@ -1,5 +1,10 @@
 # Pupilio SDK Update Log
 
+## Version 1.4.0 (Build 1) - 2025-12-03
+
+- Fix bugs.
+- Add a new function `estimate_gaze`.
+
 ## Version 1.3.2 (Build 1) - 2025-10-08
 
 - Add fixation detection feature (I-DT).

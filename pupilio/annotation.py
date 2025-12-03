@@ -38,7 +38,7 @@ from functools import wraps
 
 
 # Decorator to mark functions as deprecated with version information
-def deprecated(version):
+def deprecated(version, tips=""):
     """
     A decorator to mark functions as deprecated with a specified version.
 
@@ -47,6 +47,7 @@ def deprecated(version):
 
     Args:
         version (str): The version in which the function was deprecated.
+        tips (str): The tips message to show in the warning message.
 
     Returns:
         function: The decorated function that issues a warning when called.
@@ -77,7 +78,7 @@ def deprecated(version):
             """
             warnings.warn(
                 f"The function '{func.__name__}' is deprecated since version {version} and will be removed in"
-                f" future versions. Please use the new alternative.",
+                f" future versions. {tips}",
                 DeprecationWarning,  # Specifies that this is a deprecation warning
             )
             return func(*args, **kwargs)  # Calls the original function
