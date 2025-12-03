@@ -901,6 +901,7 @@ class CalibrationUI(object):
                 if self.config.face_previewing:
                     self._draw_previewer()
                 self._draw_adjust_position()
+
             elif self._phase_validation:
                 self._draw_validation_point()
 
