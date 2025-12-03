@@ -65,7 +65,7 @@ class DefaultConfig:
             `cali_mode` (CalibrationMode): Specifies the calibration mode, default is TWO_POINTS.
 
         Kappa Angle Verification:
-            `enable_kappa_verification` (int): Verification of the kappa angle after calibration. Default is 1.
+            `enable_kappa_verification` (int): Verification of the kappa angle after calibration. Default is 0.
                                          When this value is 0, the verification of the kappa angle after calibration
                                          is disabled, suitable for users with strabismus.
 
@@ -151,7 +151,7 @@ class DefaultConfig:
         # Calibration mode (either 2 or 5)
         self.cali_mode = CalibrationMode.TWO_POINTS  # Default to TWO_POINTS calibration mode
 
-        # Verification of the kappa angle after calibration, default is 1 (verify the estimated kappa angle).
+        # Verification of the kappa angle after calibration, default is 0 (verify the estimated kappa angle).
         # When this value is 0, the verification of the kappa angle after calibration
         # is disabled, allowing calibration for users with strabismus.
         self.enable_kappa_verification = 0
