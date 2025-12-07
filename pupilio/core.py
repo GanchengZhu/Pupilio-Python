@@ -299,7 +299,10 @@ class Pupilio:
             raise Exception("The directory of data file is not writeable.")
             # sys.exit(1)  # Exit the program with an error status
 
-        return self._et_native_lib.pupil_io_save_data_to(path.encode("gbk"))
+        if self._et_native_lib.pupil_io_save_data_to(path.encode("gbk"))==ET_ReturnCode.ET_SUCCESS:
+            return ET_ReturnCode.ET_SUCCESS
+        else:
+            raise Exception(f"Failed to save data at path: {path}.")
 
     def start_sampling(self) -> int:
         """
