@@ -178,7 +178,7 @@ class Pupilio:
         self._et_native_lib.pupil_io_set_eye_mode(self.config.active_eye.value)
 
         # set filter parameter: look ahead
-        if not (isinstance(config.look_ahead, int) and (0 < config.look_ahead <= 4)):
+        if not (isinstance(self.config.look_ahead, int) and (0 < self.config.look_ahead <= 4)):
             raise ValueError("Parameter `look_ahead` must be between 0 and 4 and integer")
 
         self._et_native_lib.pupil_io_set_look_ahead(self.config.look_ahead)
