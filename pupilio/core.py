@@ -152,7 +152,7 @@ class Pupilio:
             np.ctypeslib.ndpointer(dtype=np.float32, ndim=1, flags='C_CONTIGUOUS'),
             np.ctypeslib.ndpointer(dtype=np.float32, ndim=1, flags='C_CONTIGUOUS')
         ]
-        self._et_native_lib.pupil_io_previewer_init.argtypes = [ctypes.c_char_p, ctypes.c_int]
+        self._et_native_lib.pupil_io_previewer_init.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.c_bool]
         self._et_native_lib.pupil_io_send_trigger.argtypes = [ctypes.c_int]
         self._et_native_lib.pupil_io_save_data_to.argtypes = [ctypes.c_char_p]
         self._et_native_lib.pupil_io_create_session.argtypes = [ctypes.c_char_p]
@@ -212,12 +212,13 @@ class Pupilio:
         self._previewer_thread = None
         self._online_event_detection = None
 
-    def previewer_start(self, udp_host: str, udp_port: int):
+    def previewer_start(self, udp_host: str, udp_port: int, draw_preview_annotations:bool=True):
         """
         Initialize and start the previewer.
 
         :param udp_host: The UDP host address for receiving the video stream.
         :param udp_port: The UDP port number for receiving the video stream.
+        :param draw_preview_annotations: Whether to eye boxes, glints, and eye pupils.
 
         This method first calls pupil_io_previewer_init to initialize the previewer,
         and then calls pupil_io_previewer_start to start the preview.
@@ -226,7 +227,7 @@ class Pupilio:
             ipaddress.ip_address(udp_host)
         except ValueError:
             raise Exception(f"Invalid IP address: {udp_host}.")
-        self._et_native_lib.pupil_io_previewer_init(udp_host.encode('gbk'), udp_port)
+        self._et_native_lib.pupil_io_previewer_init(udp_host.encode('gbk'), udp_port, draw_preview_annotations)
         self._et_native_lib.pupil_io_previewer_start()
 
     def previewer_stop(self):
