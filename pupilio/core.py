@@ -357,11 +357,6 @@ class Pupilio:
                    - If successful, returns ET_SUCCESS and the face position coordinates.
         """
         # Create a ctypes array to store face position
-
-        # Check if sampling is ongoing
-        if self.get_sampling_status():
-            # Return failed code if sampling is ongoing
-            return ET_ReturnCode.ET_FAILED, self._face_pos
         # Call DLL function to get face position
         ret = self._et_native_lib.pupil_io_face_pos(self._face_pos)
         # Return result code and face position coordinates
