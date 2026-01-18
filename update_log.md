@@ -6,7 +6,6 @@
 - Add a new function `estimate_gaze`.
 - Add fixation detection feature (I-DT).
 
-
 ## Version 1.3.1 (Build 1) - 2025-09-23
 
 - Updated the DLL to support gaze simulation mode using the mouse, allowing you to debug your program on any Windows PC.
