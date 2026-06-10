@@ -1,6 +1,6 @@
 # Pupilio SDK Update Log
 
-## Version 1.4.0 (Build 1) - 2025-12-03
+## Version 1.4.0 (Build 1) - 2026-01-18
 
 - Fix bugs.
 - Add a new function `estimate_gaze`.

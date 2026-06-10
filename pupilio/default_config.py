@@ -222,7 +222,9 @@ class DefaultConfig:
         elif mode == 2:
             self._cali_mode = CalibrationMode.TWO_POINTS
         elif mode == 5:
-            self._cali_mode = CalibrationMode.FIVE_POINTS  # Assuming FIVE_POINTS exists in CalibrationMode
+            self._cali_mode = CalibrationMode.FIVE_POINTS  # Assuming FIVE_POINTS exists in CalibrationMode+
+        elif mode == 4:
+            self._cali_mode = CalibrationMode.FOUR_POINTS  # Assuming FIVE_POINTS exists in CalibrationMode
         else:
             raise ValueError("Invalid calibration mode. Must be 2, 5, or a CalibrationMode instance.")
 

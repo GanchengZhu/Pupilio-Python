@@ -171,6 +171,12 @@ class Pupilio:
         self._et_native_lib.pupil_io_set_kappa_filter.argtypes = [ctypes.c_int]
         self._et_native_lib.pupil_io_set_log.argtypes = [ctypes.c_int, ctypes.c_char_p]
         self._et_native_lib.pupil_io_set_eye_mode.argtypes = [ctypes.c_int]
+        self._et_native_lib.pupil_io_get_camera_mode.restype = ctypes.c_int
+        self._et_native_lib.pupil_io_get_camera_mode.argtypes = [
+            ctypes.POINTER(ctypes.c_int),  # int* mode
+            ctypes.POINTER(ctypes.c_int),  # int* left_roi（指向4个int的数组）
+            ctypes.POINTER(ctypes.c_int)  # int* right_roi（同上）
+        ]
 
         version = self._et_native_lib.pupil_io_get_version()
         print("Native Pupilio Version:", version.decode("gbk"))
@@ -193,6 +199,8 @@ class Pupilio:
             self.calibration_points = np.zeros(2 * 2, dtype=np.float32)
         elif self.config.cali_mode == CalibrationMode.FIVE_POINTS:
             self.calibration_points = np.zeros(2 * 5, dtype=np.float32)
+        elif self.config.cali_mode == CalibrationMode.FOUR_POINTS:
+            self.calibration_points = np.zeros(2 * 4, dtype=np.float32)
         else:
             self.calibration_points = np.zeros(2 * 2, dtype=np.float32)
 
@@ -203,6 +211,24 @@ class Pupilio:
         if self._et_native_lib.pupil_io_init() != ET_ReturnCode.ET_SUCCESS.value:
             raise Exception("Pupilio init failed, please contact the developer!")
 
+        mode = np.zeros(1, dtype=np.int32)  # 单个 int32
+        left_roi = np.zeros(4, dtype=np.int32)  # 长度4的 int32 数组
+        right_roi = np.zeros(4, dtype=np.int32)
+        ret = self._et_native_lib.pupil_io_get_camera_mode(
+            mode.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            left_roi.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            right_roi.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
+        )
+
+        if ret != ET_ReturnCode.ET_SUCCESS.value:
+            raise Exception("Call `pupil_io_get_camera_mode` failed, please contact the developer!")
+
+        self.LEFT_IMG_WIDTH: int = left_roi[2] - left_roi[0]
+        self.LEFT_IMG_HEIGHT: int = left_roi[3] - left_roi[1]
+
+        self.RIGHT_IMG_WIDTH: int = right_roi[2] - right_roi[0]
+        self.RIGHT_IMG_HEIGHT: int = right_roi[3] - right_roi[1]
+
         self._face_pos = np.zeros(3, dtype=np.float32)
         self._pt = np.zeros(11, dtype=np.float32)
         self._pt_l = np.zeros(14, dtype=np.float32)
@@ -212,7 +238,7 @@ class Pupilio:
         self._previewer_thread = None
         self._online_event_detection = None
 
-    def previewer_start(self, udp_host: str, udp_port: int, draw_preview_annotations:bool=True):
+    def previewer_start(self, udp_host: str, udp_port: int, draw_preview_annotations: bool = True):
         """
         Initialize and start the previewer.
 
@@ -300,7 +326,7 @@ class Pupilio:
             raise Exception("The directory of data file is not writeable.")
             # sys.exit(1)  # Exit the program with an error status
 
-        if self._et_native_lib.pupil_io_save_data_to(path.encode("gbk"))==ET_ReturnCode.ET_SUCCESS:
+        if self._et_native_lib.pupil_io_save_data_to(path.encode("gbk")) == ET_ReturnCode.ET_SUCCESS:
             return ET_ReturnCode.ET_SUCCESS
         else:
             raise Exception(f"Failed to save data at path: {path}.")
@@ -315,6 +341,8 @@ class Pupilio:
         # Lock to ensure thread safety while modifying sampling status
         res = self._et_native_lib.pupil_io_start_sampling()
         time.sleep(0.05)
+        if res == ET_ReturnCode.ET_FAILED:
+            raise Exception("You have called `start_sampling` function or something went wrong.")
         return res
 
     def get_sampling_status(self) -> bool:
@@ -345,6 +373,8 @@ class Pupilio:
         """
         res = self._et_native_lib.pupil_io_stop_sampling()
         time.sleep(0.1)
+        if res == ET_ReturnCode.ET_FAILED:
+            raise Exception("There is no sampling running.")
         return res
 
     def face_position(self) -> Tuple[int, np.ndarray]:
@@ -745,24 +775,28 @@ class Pupilio:
     def _process_images(self, left_img: np.ndarray, right_img: np.ndarray, eye_rects: np.ndarray,
                         pupil_centers: np.ndarray, glint_centers: np.ndarray) -> np.ndarray:
 
-        IMG_HEIGHT, IMG_WIDTH = 1024, 1280  # Dimensions of the preview images
         left_img = cv2.cvtColor(left_img, cv2.COLOR_GRAY2BGR)
         right_img = cv2.cvtColor(right_img, cv2.COLOR_GRAY2BGR)
 
-        FRAME_WARNING = (255, 0, 0)  # WARNING FRAME
-        FRAME_SUCCESS = (0, 255, 0)  # SUCCESS
+        FRAME_WARNING = (255, 0, 0)
+        FRAME_SUCCESS = (0, 255, 0)
         FRAME_COLOR = FRAME_SUCCESS
         FRAME_WIDTH = 8
 
         imgs = [left_img, right_img]
 
-        eyes_canvas = [[np.ones((IMG_WIDTH - IMG_HEIGHT, IMG_WIDTH // 2, 3), dtype=np.uint8) * 128,
-                        np.ones((IMG_WIDTH - IMG_HEIGHT, IMG_WIDTH // 2, 3), dtype=np.uint8) * 128],
-                       [np.ones((IMG_WIDTH - IMG_HEIGHT, IMG_WIDTH // 2, 3), dtype=np.uint8) * 128,
-                        np.ones((IMG_WIDTH - IMG_HEIGHT, IMG_WIDTH // 2, 3), dtype=np.uint8) * 128]
-                       ]
+        # ---- 修复：防止尺寸为负，取绝对值并保证 >=1 ---
+        previewer_height = 1024
+        previewer_width = 1280
 
-        preview_imgs = np.zeros((2, IMG_WIDTH, IMG_WIDTH, 3), dtype=np.uint8)
+        eyes_canvas = [
+            [np.ones((previewer_height - previewer_width, previewer_width, 3), dtype=np.uint8) * 128,
+             np.ones((previewer_height - previewer_width, previewer_width, 3), dtype=np.uint8) * 128],
+            [np.ones((previewer_height - previewer_width, previewer_width, 3), dtype=np.uint8) * 128,
+             np.ones((previewer_height - previewer_width, previewer_width, 3), dtype=np.uint8) * 128]
+        ]
+
+        preview_imgs = np.zeros((2, previewer_height, previewer_width, 3), dtype=np.uint8)
 
         rects = [
             [eye_rects[:4], eye_rects[4:8]],
@@ -778,7 +812,6 @@ class Pupilio:
             [glint_centers[4:6], glint_centers[6:8]]
         ]
 
-        # figure out which eye to mask for drawing purposes
         if self.config.active_eye in [-1, 'left']:
             patch_mask_index = 1
         elif self.config.active_eye in [1, 'right']:
@@ -788,83 +821,71 @@ class Pupilio:
 
         # clip eye_patches
         eye_patches = []
-        for img_idx, img in enumerate(imgs):  # enumerate left and right images
+        for img_idx, img in enumerate(imgs):
             patches = []
-            img_h, img_w, _ = img.shape  # get image size
+            img_h, img_w, _ = img.shape
             for patch_idx, rect in enumerate(rects[img_idx]):
-                # Ensure eye rect is valid
                 x1, y1, w, h = map(int, rect)
                 x2, y2 = x1 + w, y1 + h
                 if x1 < 0 or y1 < 0 or x2 > img_w or y2 > img_h or x1 > x2 or y1 > y2:
-                    # print(f"Invalid rect at img {img_idx}, rect {patch_idx}: {rect}")
                     FRAME_COLOR = FRAME_WARNING
-                    continue  # skip invalid frame
+                    continue
 
-                if w == 0 or h == 0:  # empty eye-patch when tracking monocularly
+                if w == 0 or h == 0:
                     patch = img[0:96, 0:96]
                 else:
-                    patch = img[y1:y2, x1:x2]  # clip the eye patch
+                    patch = img[y1:y2, x1:x2]
 
-                # pupil center and glint coordinates
                 pupil_x, pupil_y = pupil_center_list[img_idx][patch_idx]
                 glint_x, glint_y = glint_center_list[img_idx][patch_idx]
 
                 if not (x1 <= pupil_x < x2 and y1 <= pupil_y < y2):
                     if not (patch_mask_index == patch_idx):
                         FRAME_COLOR = FRAME_WARNING
-                    # print(f"Invalid pupil center at img {img_idx}, rect {patch_idx}: ({pupil_x}, {pupil_y})")
-                    pupil_x, pupil_y = None, None  # invalid pupil center
+                    pupil_x, pupil_y = None, None
                 else:
                     pupil_x, pupil_y = int(pupil_x - x1), int(pupil_y - y1)
 
                 if not (x1 <= glint_x < x2 and y1 <= glint_y < y2):
                     if not (patch_mask_index == patch_idx):
                         FRAME_COLOR = FRAME_WARNING
-                    # print(f"Invalid glint center at img {img_idx}, rect {patch_idx}: ({glint_x}, {glint_y})")
-                    glint_x, glint_y = None, None  # invalid glint
+                    glint_x, glint_y = None, None
                 else:
                     glint_x, glint_y = int(glint_x - x1), int(glint_y - y1)
 
-                # draw pupil center
                 if pupil_x is not None and pupil_y is not None:
                     cv2.circle(patch, (pupil_x, pupil_y), 5, (0, 0, 255), -1)
-                # draw glint
                 if glint_x is not None and glint_y is not None:
                     cv2.circle(patch, (glint_x, glint_y), 3, (0, 255, 0), -1)
 
-                # draw rect on image
-                if w == 0 or h == 0:
-                    pass
-                else:
+                if w > 0 and h > 0:
                     cv2.rectangle(patch, (0, 0), (patch.shape[1] - 1, patch.shape[0] - 1), FRAME_COLOR, 6)
 
                 patches.append(patch)
             eye_patches.append(patches)
 
+        # 将 eye_patches 缩放到 canvas 上
         margin = 10
         for canvas_idx, canvases in enumerate(eyes_canvas):
             for rect_idx, canvas in enumerate(canvases):
                 if canvas_idx >= len(eye_patches) or rect_idx >= len(eye_patches[canvas_idx]):
-                    continue  # skip invalid patch
+                    continue
                 patch = eye_patches[canvas_idx][rect_idx]
                 patch_h, patch_w, _ = patch.shape
                 canvas_h, canvas_w, _ = canvas.shape
 
-                # calculate scale
                 scale = min((canvas_w - 2 * margin) / patch_w, (canvas_h - 2 * margin) / patch_h)
                 new_w, new_h = int(patch_w * scale), int(patch_h * scale)
 
-                # resize eye_patch
                 resized_patch = cv2.resize(patch, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
 
-                # calculate patch center
                 start_x = (canvas_w - new_w) // 2
                 start_y = (canvas_h - new_h) // 2
 
-                # draw scaled patch on canvas
                 if not rect_idx == patch_mask_index:
                     eyes_canvas[canvas_idx][rect_idx][start_y:start_y + new_h, start_x:start_x + new_w] = resized_patch
 
+        # ---- 重新布局 preview_imgs ----
         for idx in range(2):
             original_img = imgs[idx]
             eye1_canvas, eye2_canvas = eyes_canvas[idx]
@@ -874,20 +895,25 @@ class Pupilio:
             cv2.rectangle(original_img, (0, 0), (original_img.shape[1] - 1, original_img.shape[0] - 1), FRAME_COLOR,
                           FRAME_WIDTH)
 
-            preview_imgs[idx, 0:IMG_HEIGHT, 0:IMG_WIDTH, :] = original_img
+            orig_h, orig_w = original_img.shape[:2]
+            canvas_h, canvas_w = eye1_canvas.shape[:2]
 
-            canvas_h, canvas_w, _ = eye1_canvas.shape
-            target_h, target_w = canvas_h, canvas_w
+            # 拼接两个 eye canvas
+            combined_canvas = np.zeros((canvas_h, 2 * canvas_w, 3), dtype=np.uint8)
+            combined_canvas[:, 0:canvas_w, :] = eye1_canvas
+            combined_canvas[:, canvas_w:2 * canvas_w, :] = eye2_canvas
+            comb_h, comb_w = combined_canvas.shape[:2]
 
-            # Merge two eye patches
-            combined_canvas = np.zeros((target_h, 2 * target_w, 3), dtype=np.uint8)
-            combined_canvas[:, 0:target_w, :] = eye1_canvas
-            combined_canvas[:, target_w:2 * target_w, :] = eye2_canvas
+            # --- 原图：顶部对齐 + 水平居中 ---
+            x_orig = (previewer_width - orig_w) // 2
+            preview_imgs[idx, 0:orig_h, x_orig:x_orig + orig_w, :] = original_img
 
-            preview_imgs[idx, IMG_HEIGHT:IMG_HEIGHT + target_h, 0:2 * target_w, :] = combined_canvas
+            # --- 眼图：底部对齐 + 水平居中 ---
+            x_comb = (previewer_width - comb_w) // 2
+            y_comb = previewer_height - comb_h  # 下边缘贴底
+            preview_imgs[idx, y_comb:y_comb + comb_h, x_comb:x_comb + comb_w, :] = combined_canvas
 
         return preview_imgs
-
     def get_preview_images(self):
         """
         Retrieves preview images and related eye-tracking data, including eye bounds, pupil centers,
@@ -896,12 +922,10 @@ class Pupilio:
         Returns:
             numpy.ndarray: A 3D array containing the left and right grayscale preview images.
         """
-        IMG_HEIGHT, IMG_WIDTH = 1024, 1280  # Dimensions of the preview images
 
         # Initialize arrays for preview images, eye bounds, pupil centers, and CR centers
-        preview_left_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)  # Left preview image
-        preview_right_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)  # Right preview image
-        # preview_imgs = np.zeros((2, IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)  # Combined preview images
+        preview_left_img = np.zeros((self.LEFT_IMG_HEIGHT, self.LEFT_IMG_WIDTH), dtype=np.uint8)
+        preview_right_img = np.zeros((self.RIGHT_IMG_HEIGHT, self.RIGHT_IMG_WIDTH), dtype=np.uint8)
         eye_rects = np.zeros(4 * 4, dtype=np.float32)  # Array for eye bounding boxes (4 coordinates per eye)
         pupil_centers = np.zeros(4 * 2, dtype=np.float32)  # Array for pupil centers (x, y for each pupil)
         glint_centers = np.zeros(4 * 2, dtype=np.float32)  # Array for CR centers (x, y for each CR)

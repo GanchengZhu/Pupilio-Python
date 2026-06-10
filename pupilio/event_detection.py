@@ -19,7 +19,7 @@ class EventDetection:
     """
 
     def __init__(self):
-        """Initialize EventDetection by loading PupilioET.dll depending on platform."""
+        """Initialize EventDetection by loading DummyPupilioET.dll depending on platform."""
         if platform.system().lower() == 'windows':
             _current_dir = os.path.abspath(os.path.dirname(__file__))
             _lib_dir = os.path.join(_current_dir, "lib")
@@ -29,7 +29,7 @@ class EventDetection:
             os.environ['PATH'] += ';' + _lib_dir
 
             # Load DLL
-            _dll_path = os.path.join(_lib_dir, 'PupilioET.dll')
+            _dll_path = os.path.join(_lib_dir, 'DummyPupilioET.dll')
             if not os.path.exists(_dll_path):
                 raise FileNotFoundError(f"DLL not found: {_dll_path}")
 
