@@ -1,5 +1,8 @@
 # Pupilio SDK Update Log
 
+## Version 1.4.0 (Build 1) - 2026-06-14
+- Support 400Hz eye-tracking sampling
+
 ## Version 1.4.0 (Build 1) - 2026-01-18
 
 - Fix bugs.

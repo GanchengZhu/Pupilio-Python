@@ -52,8 +52,7 @@ config = DefaultConfig()
 # Heuristic filter, default look_ahead = 2 (i.e., a noisy spike is determined by
 # 4 flanking samples)
 config.look_ahead = 3
-config.active_eye = 'left'
-
+config.simulation_mode = 1
 # instantiate a tracker object
 pupil_io = Pupilio(config)
 

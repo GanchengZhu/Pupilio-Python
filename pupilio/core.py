@@ -28,6 +28,7 @@
 #
 # DESCRIPTION:
 # The core library
+from __future__ import annotations
 
 # Author: GC Zhu
 # Email: zhugc2016@gmail.com
@@ -40,6 +41,7 @@ import platform
 import re
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Callable, Tuple
 
 import cv2
@@ -67,7 +69,7 @@ class Pupilio:
         config = DefaultConfig()
         config.look_ahead = 2
         pi = Pupilio(config=config)
-        
+
         usage 2:
         pi = Pupilio()
         """
@@ -220,14 +222,24 @@ class Pupilio:
             right_roi.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
         )
 
+        self.sampling_rate = 200
+        if mode[0] == 1:
+            self.sampling_rate = 800
+        elif mode[0] == 2:
+            self.sampling_rate = 1000
+        elif mode[0] == 3:
+            self.sampling_rate = 200
+        elif mode[0] == 4 or mode[0] == 0:
+            self.sampling_rate = 400
+
         if ret != ET_ReturnCode.ET_SUCCESS.value:
             raise Exception("Call `pupil_io_get_camera_mode` failed, please contact the developer!")
 
-        self.LEFT_IMG_WIDTH: int = left_roi[2] - left_roi[0]
-        self.LEFT_IMG_HEIGHT: int = left_roi[3] - left_roi[1]
+        self.LEFT_IMG_WIDTH: int = int(left_roi[2])
+        self.LEFT_IMG_HEIGHT: int = int(left_roi[3])
 
-        self.RIGHT_IMG_WIDTH: int = right_roi[2] - right_roi[0]
-        self.RIGHT_IMG_HEIGHT: int = right_roi[3] - right_roi[1]
+        self.RIGHT_IMG_WIDTH: int = int(right_roi[2])
+        self.RIGHT_IMG_HEIGHT: int = int(right_roi[3])
 
         self._face_pos = np.zeros(3, dtype=np.float32)
         self._pt = np.zeros(11, dtype=np.float32)
@@ -237,6 +249,10 @@ class Pupilio:
 
         self._previewer_thread = None
         self._online_event_detection = None
+
+        # 用PathLib吧，在本文件对应的./asset/smiling-face.png
+        avatar_path = Path(__file__).parent / 'asset' / 'smiling-face.png'
+        self.face_avatar_raw = cv2.imread(str(avatar_path), cv2.IMREAD_UNCHANGED)
 
     def previewer_start(self, udp_host: str, udp_port: int, draw_preview_annotations: bool = True):
         """
@@ -631,38 +647,54 @@ class Pupilio:
             bg_color (tuple): Background color, specific parameter for pygame
             hands_free (bool): Whether to hands free
         """
-        from pygame import Surface
-        screen_type = ""
+        # from pygame import Surface
+        # screen_type = ""
+        # if screen is None:
+        #     try:
+        #         import pygame
+        #         from pygame.locals import FULLSCREEN, HWSURFACE
+        #         pygame.init()
+        #         scn_width, scn_height = (1920, 1080)
+        #         screen = pygame.display.set_mode((scn_width, scn_height), FULLSCREEN | HWSURFACE)
+        #         screen_type = 'pygame'
+        #     except:
+        #         print("The parameter passed is None, creating a new pygame screen.")
+        #         raise Exception("pygame screen can't be created.")
+        # elif isinstance(screen, Surface):
+        #     screen_type = 'pygame'
+        # else:
+        #     from psychopy.visual import Window
+        #     if isinstance(screen, Window):
+        #         screen_type = 'psychopy'
+        #
+        # if screen_type == "":
+        #     raise Exception("Screen cannot be None. Please pass pygame window or psychopy window instance")
+        #
+        # if screen_type == 'pygame':
+        #     from .graphics_pygame import CalibrationUI
+        # else:
+        #     from .graphics import CalibrationUI
+        #
+        # if not hands_free:
+        #     CalibrationUI(pupil_io=self, screen=screen).draw(validate=validate, bg_color=bg_color)
+        # else:
+        #     CalibrationUI(pupil_io=self, screen=screen).draw_hands_free(validate=validate, bg_color=bg_color)
+
         if screen is None:
-            try:
-                import pygame
-                from pygame.locals import FULLSCREEN, HWSURFACE
-                pygame.init()
-                scn_width, scn_height = (1920, 1080)
-                screen = pygame.display.set_mode((scn_width, scn_height), FULLSCREEN | HWSURFACE)
-                screen_type = 'pygame'
-            except:
-                print("The parameter passed is None, creating a new pygame screen.")
-                raise Exception("pygame screen can't be created.")
-        elif isinstance(screen, Surface):
-            screen_type = 'pygame'
-        else:
-            from psychopy.visual import Window
-            if isinstance(screen, Window):
-                screen_type = 'psychopy'
+            # 创建默认的 PyGame 全屏窗口
+            import pygame
+            from pygame.locals import FULLSCREEN, HWSURFACE
+            pygame.init()
+            screen = pygame.display.set_mode((1920, 1080), FULLSCREEN | HWSURFACE)
 
-        if screen_type == "":
-            raise Exception("Screen cannot be None. Please pass pygame window or psychopy window instance")
-
-        if screen_type == 'pygame':
-            from .graphics_pygame import CalibrationUI
-        else:
-            from .graphics import CalibrationUI
+            # 导入统一的校准 UI（内部会根据 screen 类型自动选择后端）
+        from .cali_graphics import CalibrationUI
+        ui = CalibrationUI(pupil_io=self, screen=screen, bg_color=bg_color)
 
         if not hands_free:
-            CalibrationUI(pupil_io=self, screen=screen).draw(validate=validate, bg_color=bg_color)
+            ui.draw(validate=validate, bg_color=bg_color)
         else:
-            CalibrationUI(pupil_io=self, screen=screen).draw_hands_free(validate=validate, bg_color=bg_color)
+            ui.draw_hands_free(validate=validate, bg_color=bg_color)
 
     @deprecated("1.1.2")
     def subscribe_sample(self, subscriber_func: Callable, args=(), kwargs=None):
@@ -775,28 +807,23 @@ class Pupilio:
     def _process_images(self, left_img: np.ndarray, right_img: np.ndarray, eye_rects: np.ndarray,
                         pupil_centers: np.ndarray, glint_centers: np.ndarray) -> np.ndarray:
 
-        left_img = cv2.cvtColor(left_img, cv2.COLOR_GRAY2BGR)
-        right_img = cv2.cvtColor(right_img, cv2.COLOR_GRAY2BGR)
+        IMG_HEIGHT, IMG_WIDTH = 1024, 1280  # Dimensions of the preview images
+        _left_img = cv2.cvtColor(left_img, cv2.COLOR_GRAY2BGR)
+        _right_img = cv2.cvtColor(right_img, cv2.COLOR_GRAY2BGR)
 
-        FRAME_WARNING = (255, 0, 0)
-        FRAME_SUCCESS = (0, 255, 0)
+        FRAME_WARNING = (255, 0, 0)  # WARNING FRAME
+        FRAME_SUCCESS = (0, 255, 0)  # SUCCESS
         FRAME_COLOR = FRAME_SUCCESS
         FRAME_WIDTH = 8
 
-        imgs = [left_img, right_img]
+        imgs = [_left_img, _right_img]
 
-        # ---- 修复：防止尺寸为负，取绝对值并保证 >=1 ---
-        previewer_height = 1024
-        previewer_width = 1280
+        eyes_canvas = [[np.ones((IMG_WIDTH - IMG_HEIGHT, IMG_WIDTH // 2, 3), dtype=np.uint8) * 128,
+                        np.ones((IMG_WIDTH - IMG_HEIGHT, IMG_WIDTH // 2, 3), dtype=np.uint8) * 128],
+                       [np.ones((IMG_WIDTH - IMG_HEIGHT, IMG_WIDTH // 2, 3), dtype=np.uint8) * 128,
+                        np.ones((IMG_WIDTH - IMG_HEIGHT, IMG_WIDTH // 2, 3), dtype=np.uint8) * 128]]
 
-        eyes_canvas = [
-            [np.ones((previewer_height - previewer_width, previewer_width, 3), dtype=np.uint8) * 128,
-             np.ones((previewer_height - previewer_width, previewer_width, 3), dtype=np.uint8) * 128],
-            [np.ones((previewer_height - previewer_width, previewer_width, 3), dtype=np.uint8) * 128,
-             np.ones((previewer_height - previewer_width, previewer_width, 3), dtype=np.uint8) * 128]
-        ]
-
-        preview_imgs = np.zeros((2, previewer_height, previewer_width, 3), dtype=np.uint8)
+        preview_imgs = np.zeros((2, IMG_WIDTH, IMG_WIDTH, 3), dtype=np.uint8)
 
         rects = [
             [eye_rects[:4], eye_rects[4:8]],
@@ -812,6 +839,7 @@ class Pupilio:
             [glint_centers[4:6], glint_centers[6:8]]
         ]
 
+        # figure out which eye to mask for drawing purposes
         if self.config.active_eye in [-1, 'left']:
             patch_mask_index = 1
         elif self.config.active_eye in [1, 'right']:
@@ -821,99 +849,119 @@ class Pupilio:
 
         # clip eye_patches
         eye_patches = []
-        for img_idx, img in enumerate(imgs):
+        for img_idx, img in enumerate(imgs):  # enumerate left and right images
             patches = []
-            img_h, img_w, _ = img.shape
+            img_h, img_w, _ = img.shape  # get image size
             for patch_idx, rect in enumerate(rects[img_idx]):
+                # Ensure eye rect is valid
                 x1, y1, w, h = map(int, rect)
                 x2, y2 = x1 + w, y1 + h
                 if x1 < 0 or y1 < 0 or x2 > img_w or y2 > img_h or x1 > x2 or y1 > y2:
+                    # print(f"Invalid rect at img {img_idx}, rect {patch_idx}: {rect}")
                     FRAME_COLOR = FRAME_WARNING
-                    continue
+                    continue  # skip invalid frame
 
-                if w == 0 or h == 0:
+                if w == 0 or h == 0:  # empty eye-patch when tracking monocularly
                     patch = img[0:96, 0:96]
                 else:
-                    patch = img[y1:y2, x1:x2]
+                    patch = img[y1:y2, x1:x2]  # clip the eye patch
 
+                # pupil center and glint coordinates
                 pupil_x, pupil_y = pupil_center_list[img_idx][patch_idx]
                 glint_x, glint_y = glint_center_list[img_idx][patch_idx]
 
                 if not (x1 <= pupil_x < x2 and y1 <= pupil_y < y2):
                     if not (patch_mask_index == patch_idx):
                         FRAME_COLOR = FRAME_WARNING
-                    pupil_x, pupil_y = None, None
+                    # print(f"Invalid pupil center at img {img_idx}, rect {patch_idx}: ({pupil_x}, {pupil_y})")
+                    pupil_x, pupil_y = None, None  # invalid pupil center
                 else:
                     pupil_x, pupil_y = int(pupil_x - x1), int(pupil_y - y1)
 
                 if not (x1 <= glint_x < x2 and y1 <= glint_y < y2):
                     if not (patch_mask_index == patch_idx):
                         FRAME_COLOR = FRAME_WARNING
-                    glint_x, glint_y = None, None
+                    # print(f"Invalid glint center at img {img_idx}, rect {patch_idx}: ({glint_x}, {glint_y})")
+                    glint_x, glint_y = None, None  # invalid glint
                 else:
                     glint_x, glint_y = int(glint_x - x1), int(glint_y - y1)
 
+                # draw pupil center
                 if pupil_x is not None and pupil_y is not None:
                     cv2.circle(patch, (pupil_x, pupil_y), 5, (0, 0, 255), -1)
+                # draw glint
                 if glint_x is not None and glint_y is not None:
                     cv2.circle(patch, (glint_x, glint_y), 3, (0, 255, 0), -1)
 
-                if w > 0 and h > 0:
+                # draw rect on image
+                if w == 0 or h == 0:
+                    pass
+                else:
                     cv2.rectangle(patch, (0, 0), (patch.shape[1] - 1, patch.shape[0] - 1), FRAME_COLOR, 6)
 
                 patches.append(patch)
             eye_patches.append(patches)
 
-        # 将 eye_patches 缩放到 canvas 上
         margin = 10
         for canvas_idx, canvases in enumerate(eyes_canvas):
             for rect_idx, canvas in enumerate(canvases):
                 if canvas_idx >= len(eye_patches) or rect_idx >= len(eye_patches[canvas_idx]):
-                    continue
+                    continue  # skip invalid patch
                 patch = eye_patches[canvas_idx][rect_idx]
                 patch_h, patch_w, _ = patch.shape
                 canvas_h, canvas_w, _ = canvas.shape
 
+                # calculate scale
                 scale = min((canvas_w - 2 * margin) / patch_w, (canvas_h - 2 * margin) / patch_h)
                 new_w, new_h = int(patch_w * scale), int(patch_h * scale)
 
+                # resize eye_patch
                 resized_patch = cv2.resize(patch, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
 
+                # calculate patch center
                 start_x = (canvas_w - new_w) // 2
                 start_y = (canvas_h - new_h) // 2
 
+                # draw scaled patch on canvas
                 if not rect_idx == patch_mask_index:
                     eyes_canvas[canvas_idx][rect_idx][start_y:start_y + new_h, start_x:start_x + new_w] = resized_patch
 
-        # ---- 重新布局 preview_imgs ----
         for idx in range(2):
             original_img = imgs[idx]
             eye1_canvas, eye2_canvas = eyes_canvas[idx]
             cv2.rectangle(eye1_canvas, (0, 0), (eye1_canvas.shape[1] - 1, eye1_canvas.shape[0] - 1), FRAME_COLOR, 2)
             cv2.rectangle(eye2_canvas, (0, 0), (eye2_canvas.shape[1] - 1, eye2_canvas.shape[0] - 1), FRAME_COLOR, 2)
 
-            cv2.rectangle(original_img, (0, 0), (original_img.shape[1] - 1, original_img.shape[0] - 1), FRAME_COLOR,
+            # cv2.rectangle(original_img, (0, 0), (original_img.shape[1] - 1, original_img.shape[0] - 1), FRAME_COLOR,
+            #               FRAME_WIDTH)
+
+            # if self.sampling_rate == 200 or not return_ava:
+            #
+            # else:
+            #     img = np.ones((IMG_HEIGHT, IMG_WIDTH, 3), dtype=np.uint8) * 128
+            #     self._draw_avatar_face(img,
+            #                            rects[idx][0],
+            #                            rects[idx][1],
+            #                             pupil_center_list[idx][0],
+            #                             pupil_center_list[idx][1],
+            #                            (43, 49), (83, 51))
+            #     preview_imgs[idx, 0:IMG_HEIGHT, 0:IMG_WIDTH, :] = img
+
+            h, w = original_img.shape[:2]
+            start_y = (IMG_HEIGHT - h) // 2
+            start_x = (IMG_WIDTH - w) // 2
+            preview_imgs[idx, start_y:start_y + h, start_x:start_x + w, :] = original_img
+            cv2.rectangle(preview_imgs[idx], (0, 0), (IMG_WIDTH - 1, IMG_HEIGHT - 1), FRAME_COLOR,
                           FRAME_WIDTH)
-
-            orig_h, orig_w = original_img.shape[:2]
-            canvas_h, canvas_w = eye1_canvas.shape[:2]
-
-            # 拼接两个 eye canvas
-            combined_canvas = np.zeros((canvas_h, 2 * canvas_w, 3), dtype=np.uint8)
-            combined_canvas[:, 0:canvas_w, :] = eye1_canvas
-            combined_canvas[:, canvas_w:2 * canvas_w, :] = eye2_canvas
-            comb_h, comb_w = combined_canvas.shape[:2]
-
-            # --- 原图：顶部对齐 + 水平居中 ---
-            x_orig = (previewer_width - orig_w) // 2
-            preview_imgs[idx, 0:orig_h, x_orig:x_orig + orig_w, :] = original_img
-
-            # --- 眼图：底部对齐 + 水平居中 ---
-            x_comb = (previewer_width - comb_w) // 2
-            y_comb = previewer_height - comb_h  # 下边缘贴底
-            preview_imgs[idx, y_comb:y_comb + comb_h, x_comb:x_comb + comb_w, :] = combined_canvas
-
+            canvas_h, canvas_w, _ = eye1_canvas.shape
+            target_h, target_w = canvas_h, canvas_w
+            # Merge two eye patches
+            combined_canvas = np.zeros((target_h, 2 * target_w, 3), dtype=np.uint8)
+            combined_canvas[:, 0:target_w, :] = eye1_canvas
+            combined_canvas[:, target_w:2 * target_w, :] = eye2_canvas
+            preview_imgs[idx, IMG_HEIGHT:IMG_HEIGHT + target_h, 0:2 * target_w, :] = combined_canvas
         return preview_imgs
+
     def get_preview_images(self):
         """
         Retrieves preview images and related eye-tracking data, including eye bounds, pupil centers,
@@ -923,9 +971,15 @@ class Pupilio:
             numpy.ndarray: A 3D array containing the left and right grayscale preview images.
         """
 
-        # Initialize arrays for preview images, eye bounds, pupil centers, and CR centers
-        preview_left_img = np.zeros((self.LEFT_IMG_HEIGHT, self.LEFT_IMG_WIDTH), dtype=np.uint8)
-        preview_right_img = np.zeros((self.RIGHT_IMG_HEIGHT, self.RIGHT_IMG_WIDTH), dtype=np.uint8)
+        if self.sampling_rate == 200:
+            # Initialize arrays for preview images, eye bounds, pupil centers, and CR centers
+            IMG_HEIGHT, IMG_WIDTH = 1024, 1280  # Dimensions of the preview images
+            preview_left_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
+            preview_right_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
+        else:
+            preview_left_img = np.zeros((self.LEFT_IMG_HEIGHT, self.LEFT_IMG_WIDTH), dtype=np.uint8)
+            preview_right_img = np.zeros((self.RIGHT_IMG_HEIGHT, self.RIGHT_IMG_WIDTH), dtype=np.uint8)
+
         eye_rects = np.zeros(4 * 4, dtype=np.float32)  # Array for eye bounding boxes (4 coordinates per eye)
         pupil_centers = np.zeros(4 * 2, dtype=np.float32)  # Array for pupil centers (x, y for each pupil)
         glint_centers = np.zeros(4 * 2, dtype=np.float32)  # Array for CR centers (x, y for each CR)
@@ -948,8 +1002,127 @@ class Pupilio:
                                             glint_centers)
         return preview_imgs
 
+
     def _recalibration(self) -> int:
         """
         Recalibration function
         """
         return self._et_native_lib.pupil_io_recalibrate()
+
+    def _draw_avatar_face(self,
+                        img: np.ndarray,
+                         eye_rect_a: tuple | np.ndarray,  # (x, y, w, h)
+                         eye_rect_b: tuple | np.ndarray,
+                         pupil_a: tuple | np.ndarray,  # (x, y)
+                         pupil_b: tuple | np.ndarray,
+                         avatar_pupil_left: tuple,  # 头像左瞳孔 (x, y)
+                         avatar_pupil_right: tuple) -> None:
+        """
+        将人脸头像通过瞳孔对齐绘制到图像上。
+        参数:
+            img: 目标图像 (H, W, 3) uint8, 就地修改
+            eye_rect_a/b: 检测到的左右眼矩形 (x, y, w, h)
+            pupil_a/b: 检测到的瞳孔坐标 (x, y)
+            avatar_bgr: 头像彩色图
+            avatar_alpha: 头像 alpha 蒙版 (0-255)
+            avatar_pupil_left/right: 头像素材中左右瞳孔坐标 (x, y)
+        """
+        # 有效性检查
+        valid_a = eye_rect_a[2] > 0 and eye_rect_a[3] > 0
+        valid_b = eye_rect_b[2] > 0 and eye_rect_b[3] > 0
+        if not valid_a or not valid_b:
+            return
+
+        if self.face_avatar_raw.ndim == 3 and self.face_avatar_raw.shape[2] == 4:
+            # 四通道：分离 BGR 和 Alpha
+            avatar_bgr = self.face_avatar_raw[:, :, :3]
+            avatar_alpha = self.face_avatar_raw[:, :, 3]
+        elif self.face_avatar_raw.ndim == 3 and self.face_avatar_raw.shape[2] == 3:
+            # 三通道：直接当作 BGR，Alpha 全 255
+            avatar_bgr = self.face_avatar_raw
+            avatar_alpha = np.full(self.face_avatar_raw.shape[:2], 255, dtype=np.uint8)
+        else:
+            # 单通道灰度：转为 BGR，Alpha 全 255
+            avatar_bgr = cv2.cvtColor(self.face_avatar_raw, cv2.COLOR_GRAY2BGR)
+            avatar_alpha = np.full(self.face_avatar_raw.shape[:2], 255, dtype=np.uint8)
+        # 头像存在性检查 (若没有 alpha 则返回)
+        if avatar_bgr is None or avatar_alpha is None:
+            return
+
+        # 源瞳孔与目标瞳孔按 x 排序，保证左右一致
+        s0 = np.float32(avatar_pupil_left)
+        s1 = np.float32(avatar_pupil_right)
+        if s0[0] > s1[0]:
+            s0, s1 = s1, s0
+
+        d0 = np.float32(pupil_a)
+        d1 = np.float32(pupil_b)
+        if d0[0] > d1[0]:
+            d0, d1 = d1, d0
+
+        # 相似变换矩阵 M = [[a, -b, tx], [b, a, ty]]
+        vs = s1 - s0
+        vd = d1 - d0
+        denom = vs[0] ** 2 + vs[1] ** 2
+        if denom < 1e-6:
+            return
+
+        a = (vs[0] * vd[0] + vs[1] * vd[1]) / denom
+        b = (vs[0] * vd[1] - vs[1] * vd[0]) / denom
+        tx = d0[0] - (a * s0[0] - b * s0[1])
+        ty = d0[1] - (b * s0[0] + a * s0[1])
+        M = np.array([[a, -b, tx],
+                      [b, a, ty]], dtype=np.float64)
+
+        # 计算变换后头像四角的包围盒
+        fh, fw = avatar_bgr.shape[:2]
+        corners = np.float32([[0, 0],
+                              [fw, 0],
+                              [fw, fh],
+                              [0, fh]])
+        warped_corners = cv2.transform(corners.reshape(1, -1, 2), M).reshape(-1, 2)
+
+        minx = np.min(warped_corners[:, 0])
+        maxx = np.max(warped_corners[:, 0])
+        miny = np.min(warped_corners[:, 1])
+        maxy = np.max(warped_corners[:, 1])
+
+        bb_x = int(np.floor(minx))
+        bb_y = int(np.floor(miny))
+        bb_w = int(np.ceil(maxx)) - bb_x
+        bb_h = int(np.ceil(maxy)) - bb_y
+
+        # 裁剪到图像范围内
+        bb_x = max(0, bb_x)
+        bb_y = max(0, bb_y)
+        bb_w = min(bb_w, img.shape[1] - bb_x)
+        bb_h = min(bb_h, img.shape[0] - bb_y)
+        if bb_w <= 0 or bb_h <= 0:
+            return
+
+        # 平移矩阵到包围盒局部坐标
+        M_roi = M.copy()
+        M_roi[0, 2] -= bb_x
+        M_roi[1, 2] -= bb_y
+
+        # 仿射变换彩色图和 alpha
+        warped_bgr = cv2.warpAffine(avatar_bgr, M_roi, (bb_w, bb_h),
+                                    flags=cv2.INTER_LINEAR,
+                                    borderMode=cv2.BORDER_CONSTANT,
+                                    borderValue=(0, 0, 0))
+        warped_alpha = cv2.warpAffine(avatar_alpha, M_roi, (bb_w, bb_h),
+                                      flags=cv2.INTER_LINEAR,
+                                      borderMode=cv2.BORDER_CONSTANT,
+                                      borderValue=0)
+
+        # Alpha 混合: roi = roi*(1-α) + face*α
+        alpha_f = warped_alpha.astype(np.float32) / 255.0
+        alpha3 = np.dstack([alpha_f] * 3)
+
+        roi = img[bb_y:bb_y + bb_h, bb_x:bb_x + bb_w]  # 视图
+        roi_f = roi.astype(np.float32)
+        face_f = warped_bgr.astype(np.float32)
+
+        blended = roi_f * (1.0 - alpha3) + face_f * alpha3
+        np.clip(blended, 0, 255, out=blended)
+        roi[:] = blended.astype(np.uint8)
