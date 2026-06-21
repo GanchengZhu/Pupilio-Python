@@ -63,7 +63,7 @@ config.look_ahead = 4
 
 # Set the sampling rate (for models that support 400/800/1000 Hz),
 # on the 200 Hz model, sampling rate will fall back to 200 Hz
-config.sampling_rate = 400
+config.sampling_rate = 200
 
 # Set the calibration mode (2-point, 4-point, 5-point)
 config.cali_mode = 2

@@ -223,6 +223,18 @@ class Pupilio:
         self._et_native_lib.pupil_io_set_cali_mode(self.config.cali_mode, self.calibration_points)
         self.calibration_points = np.reshape(self.calibration_points, (-1, 2))
 
+        support_sampling_rate = self.query_support_samping_rate()
+        if not self.config.sampling_rate:
+            self.config.sampling_rate = support_sampling_rate[-1]
+        else:
+            if self.config.sampling_rate not in support_sampling_rate:
+                raise Exception("Do not support this sampling rate: %s" % self.config.sampling_rate)
+
+        if self.config.sampling_rate == 200:
+            self.set_camera_mode(3)
+        else:
+            self.set_camera_mode(0)
+
         # Initialize Pupilio, raise an exception if initialization fails
         if self._et_native_lib.pupil_io_init() != ET_ReturnCode.ET_SUCCESS.value:
             raise Exception("Pupilio init failed, please contact the developer!")
@@ -778,55 +790,55 @@ class Pupilio:
             bg_color (tuple): Background color, specific parameter for pygame
             hands_free (bool): Whether to hands free
         """
-        # from pygame import Surface
-        # screen_type = ""
-        # if screen is None:
-        #     try:
-        #         import pygame
-        #         from pygame.locals import FULLSCREEN, HWSURFACE
-        #         pygame.init()
-        #         scn_width, scn_height = (1920, 1080)
-        #         screen = pygame.display.set_mode((scn_width, scn_height), FULLSCREEN | HWSURFACE)
-        #         screen_type = 'pygame'
-        #     except:
-        #         print("The parameter passed is None, creating a new pygame screen.")
-        #         raise Exception("pygame screen can't be created.")
-        # elif isinstance(screen, Surface):
-        #     screen_type = 'pygame'
-        # else:
-        #     from psychopy.visual import Window
-        #     if isinstance(screen, Window):
-        #         screen_type = 'psychopy'
-        #
-        # if screen_type == "":
-        #     raise Exception("Screen cannot be None. Please pass pygame window or psychopy window instance")
-        #
-        # if screen_type == 'pygame':
-        #     from .graphics_pygame import CalibrationUI
-        # else:
-        #     from .graphics import CalibrationUI
-        #
-        # if not hands_free:
-        #     CalibrationUI(pupil_io=self, screen=screen).draw(validate=validate, bg_color=bg_color)
-        # else:
-        #     CalibrationUI(pupil_io=self, screen=screen).draw_hands_free(validate=validate, bg_color=bg_color)
-
-
+        from pygame import Surface
+        screen_type = ""
         if screen is None:
-            # 创建默认的 PyGame 全屏窗口
-            import pygame
-            from pygame.locals import FULLSCREEN, HWSURFACE
-            pygame.init()
-            screen = pygame.display.set_mode((1920, 1080), FULLSCREEN | HWSURFACE)
+            try:
+                import pygame
+                from pygame.locals import FULLSCREEN, HWSURFACE
+                pygame.init()
+                scn_width, scn_height = (1920, 1080)
+                screen = pygame.display.set_mode((scn_width, scn_height), FULLSCREEN | HWSURFACE)
+                screen_type = 'pygame'
+            except:
+                print("The parameter passed is None, creating a new pygame screen.")
+                raise Exception("pygame screen can't be created.")
+        elif isinstance(screen, Surface):
+            screen_type = 'pygame'
+        else:
+            from psychopy.visual import Window
+            if isinstance(screen, Window):
+                screen_type = 'psychopy'
 
-            # 导入统一的校准 UI（内部会根据 screen 类型自动选择后端）
-        from .cali_graphics import CalibrationUI
-        ui = CalibrationUI(pupil_io=self, screen=screen, bg_color=bg_color)
+        if screen_type == "":
+            raise Exception("Screen cannot be None. Please pass pygame window or psychopy window instance")
+
+        if screen_type == 'pygame':
+            from .graphics_pygame import CalibrationUI
+        else:
+            from .graphics import CalibrationUI
 
         if not hands_free:
-            ui.draw(validate=validate, bg_color=bg_color)
+            CalibrationUI(pupil_io=self, screen=screen).draw(validate=validate, bg_color=bg_color)
         else:
-            ui.draw_hands_free(validate=validate, bg_color=bg_color)
+            CalibrationUI(pupil_io=self, screen=screen).draw_hands_free(validate=validate, bg_color=bg_color)
+
+
+        # if screen is None:
+        #     # 创建默认的 PyGame 全屏窗口
+        #     import pygame
+        #     from pygame.locals import FULLSCREEN, HWSURFACE
+        #     pygame.init()
+        #     screen = pygame.display.set_mode((1920, 1080), FULLSCREEN | HWSURFACE)
+        #
+        #     # 导入统一的校准 UI（内部会根据 screen 类型自动选择后端）
+        # from .cali_graphics import CalibrationUI
+        # ui = CalibrationUI(pupil_io=self, screen=screen, bg_color=bg_color)
+        #
+        # if not hands_free:
+        #     ui.draw(validate=validate, bg_color=bg_color)
+        # else:
+        #     ui.draw_hands_free(validate=validate, bg_color=bg_color)
 
     @deprecated("1.1.2")
     def subscribe_sample(self, subscriber_func: Callable, args=(), kwargs=None):

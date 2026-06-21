@@ -211,7 +211,7 @@ class DefaultConfig:
 
         self._simulation_mode = False
 
-        self._sampling_rate = 200
+        self._sampling_rate = None
 
     @property
     def sampling_rate(self):
@@ -219,9 +219,9 @@ class DefaultConfig:
 
     @sampling_rate.setter
     def sampling_rate(self, sampling_rate):
-        support_sampling_rates = [200, 400, 800, 1000]
+        support_sampling_rates = [200, 400]
         if isinstance(sampling_rate, int):
-            if sampling_rate not in support_sampling_rates:
+            if sampling_rate in support_sampling_rates:
                 self._sampling_rate = sampling_rate
             else:
                 raise Exception(f"Sample rate must be {support_sampling_rates}.")
