@@ -1140,19 +1140,25 @@ class Pupilio:
             numpy.ndarray: A 3D array containing the left and right grayscale preview images.
         """
 
-        # if self.max_sampling_rate == 200:
-        #     # Initialize arrays for preview images, eye bounds, pupil centers, and CR centers
-        #     IMG_HEIGHT, IMG_WIDTH = 1024, 1280  # Dimensions of the preview images
-        #     preview_left_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
-        #     preview_right_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
-        # else:
-        #     preview_left_img = np.zeros((self.LEFT_IMG_HEIGHT, self.LEFT_IMG_WIDTH), dtype=np.uint8)
-        #     preview_right_img = np.zeros((self.RIGHT_IMG_HEIGHT, self.RIGHT_IMG_WIDTH), dtype=np.uint8)
+        if self._camera_mode == CameraMode.CAMERA_MODE_SYNC_200:
+            # Initialize arrays for preview images, eye bounds, pupil centers, and CR centers
+            IMG_HEIGHT, IMG_WIDTH = 1024, 1280  # Dimensions of the preview images
+            preview_left_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
+            preview_right_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
+        elif self._camera_mode == CameraMode.CAMERA_MODE_SYNC_400 and self.config.sampling_rate==200:
+            # Initialize arrays for preview images, eye bounds, pupil centers, and CR centers
+            IMG_HEIGHT, IMG_WIDTH = 1024, 1280  # Dimensions of the preview images
+            preview_left_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
+            preview_right_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
+        else:
+            preview_left_img = np.zeros((self.LEFT_IMG_HEIGHT, self.LEFT_IMG_WIDTH), dtype=np.uint8)
+            preview_right_img = np.zeros((self.RIGHT_IMG_HEIGHT, self.RIGHT_IMG_WIDTH), dtype=np.uint8)
 
-        IMG_HEIGHT, IMG_WIDTH = 1024, 1280  # Dimensions of the preview images
+        # # IMG_HEIGHT, IMG_WIDTH = 1024, 1280  # Dimensions of the preview images
+        #
+        # preview_left_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
+        # preview_right_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
 
-        preview_left_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
-        preview_right_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
         eye_rects = np.zeros(4 * 4, dtype=np.float32)  # Array for eye bounding boxes (4 coordinates per eye)
         pupil_centers = np.zeros(4 * 2, dtype=np.float32)  # Array for pupil centers (x, y for each pupil)
         glint_centers = np.zeros(4 * 2, dtype=np.float32)  # Array for CR centers (x, y for each CR)
@@ -1168,8 +1174,8 @@ class Pupilio:
                                                    glint_centers)
 
         # Copy data from native library back into the numpy arrays
-        # ctypes.memmove(preview_left_img.ctypes.data, left_img_ptr, preview_left_img.nbytes)
-        # ctypes.memmove(preview_right_img.ctypes.data, right_img_ptr, preview_right_img.nbytes)
+        ctypes.memmove(preview_left_img.ctypes.data, left_img_ptr, preview_left_img.nbytes)
+        ctypes.memmove(preview_right_img.ctypes.data, right_img_ptr, preview_right_img.nbytes)
 
         preview_imgs = self._process_images(preview_left_img, preview_right_img, eye_rects, pupil_centers,
                                             glint_centers)
