@@ -211,6 +211,23 @@ class DefaultConfig:
 
         self._simulation_mode = False
 
+        self._sampling_rate = 200
+
+    @property
+    def sampling_rate(self):
+        return self._sampling_rate
+
+    @sampling_rate.setter
+    def sampling_rate(self, sampling_rate):
+        support_sampling_rates = [200, 400, 800, 1000]
+        if isinstance(sampling_rate, int):
+            if sampling_rate not in support_sampling_rates:
+                self._sampling_rate = sampling_rate
+            else:
+                raise Exception(f"Sample rate must be {support_sampling_rates}.")
+        else:
+            raise Exception(f"Sample rate must be an integer and {support_sampling_rates}.")
+
     @property
     def cali_mode(self):
         return self._cali_mode

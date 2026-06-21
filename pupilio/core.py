@@ -30,9 +30,6 @@
 # The core library
 from __future__ import annotations
 
-# Author: GC Zhu
-# Email: zhugc2016@gmail.com
-
 import ctypes
 import ipaddress
 import logging
@@ -50,6 +47,10 @@ import numpy as np
 from .annotation import deprecated
 from .default_config import DefaultConfig
 from .misc import ET_ReturnCode, CalibrationMode
+
+
+# Author: GC Zhu
+# Email: zhugc2016@gmail.com
 
 
 class Pupilio:
@@ -180,6 +181,19 @@ class Pupilio:
             ctypes.POINTER(ctypes.c_int)  # int* right_roi（同上）
         ]
 
+        self._et_native_lib.pupil_io_est_full.restype = ctypes.c_int
+        self._et_native_lib.pupil_io_est_full.argtypes = [
+            ctypes.POINTER(ctypes.c_float),  # float* pt
+            ctypes.POINTER(ctypes.c_longlong)  # long long* timestamp
+        ]
+
+        # ---------- 绑定 pupil_io_set_camera_mode ----------
+        # 原型: PupilioReturn pupil_io_set_camera_mode(int* mode)
+        self._et_native_lib.pupil_io_set_camera_mode.restype = ctypes.c_int
+        self._et_native_lib.pupil_io_set_camera_mode.argtypes = [
+            ctypes.POINTER(ctypes.c_int)  # int* mode
+        ]
+
         version = self._et_native_lib.pupil_io_get_version()
         print("Native Pupilio Version:", version.decode("gbk"))
         # set tracking eye
@@ -213,27 +227,17 @@ class Pupilio:
         if self._et_native_lib.pupil_io_init() != ET_ReturnCode.ET_SUCCESS.value:
             raise Exception("Pupilio init failed, please contact the developer!")
 
-        mode = np.zeros(1, dtype=np.int32)  # 单个 int32
-        left_roi = np.zeros(4, dtype=np.int32)  # 长度4的 int32 数组
-        right_roi = np.zeros(4, dtype=np.int32)
-        ret = self._et_native_lib.pupil_io_get_camera_mode(
-            mode.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
-            left_roi.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
-            right_roi.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
-        )
+        mode, left_roi, right_roi = self.get_camera_mode()
 
-        self.sampling_rate = 200
-        if mode[0] == 1:
-            self.sampling_rate = 800
-        elif mode[0] == 2:
-            self.sampling_rate = 1000
-        elif mode[0] == 3:
-            self.sampling_rate = 200
-        elif mode[0] == 4 or mode[0] == 0:
-            self.sampling_rate = 400
-
-        if ret != ET_ReturnCode.ET_SUCCESS.value:
-            raise Exception("Call `pupil_io_get_camera_mode` failed, please contact the developer!")
+        self.max_sampling_rate = 200
+        if mode == 1:
+            self.max_sampling_rate = 800
+        elif mode == 2:
+            self.max_sampling_rate = 1000
+        elif mode == 3:
+            self.max_sampling_rate = 200
+        elif mode == 4 or mode[0] == 0:
+            self.max_sampling_rate = 400
 
         self.LEFT_IMG_WIDTH: int = int(left_roi[2])
         self.LEFT_IMG_HEIGHT: int = int(left_roi[3])
@@ -253,6 +257,133 @@ class Pupilio:
         # 用PathLib吧，在本文件对应的./asset/smiling-face.png
         avatar_path = Path(__file__).parent / 'asset' / 'smiling-face.png'
         self.face_avatar_raw = cv2.imread(str(avatar_path), cv2.IMREAD_UNCHANGED)
+
+    def query_support_samping_rate(self):
+        """
+        Query the list of supported sampling (frame) rates for the current camera mode.
+
+        This method retrieves the active camera mode via `get_camera_mode()` and returns
+        a list of available sampling rates (in Hz) that are supported under that mode.
+        The supported rates vary depending on the hardware capabilities and the current
+        configuration.
+
+        Returns:
+            list[int]: A list of integer sampling rates (e.g., [200, 400, 800]) supported
+                       by the current camera mode. The list is determined as follows
+                       based on the `mode` value obtained from `get_camera_mode()`:
+
+                       - mode == 1  : supports [200, 400, 800]   (max 800)
+                       - mode == 2  : supports [200, 400, 800, 1000] (max 1000)
+                       - mode == 3  : supports [200]             (max 200)
+                       - mode == 0 or 4 : supports [200, 400]    (max 400)
+
+        Note:
+            The current implementation treats `mode == 4` and `mode == 0` identically.
+            However, the line `elif mode == 4 or mode[0] == 0:` appears to contain an
+            error – `mode` is an integer, so `mode[0]` will raise a `TypeError`. The
+            intended condition is likely `mode == 4 or mode == 0`. The docstring
+            reflects the logical intent as written in the code.
+
+        Raises:
+            Exception: Propagated from `get_camera_mode()` if the underlying C call fails.
+
+        See Also:
+            get_camera_mode : Retrieves the current camera mode and ROI geometries.
+        """
+        mode, left_roi, right_roi = self.get_camera_mode()
+
+        max_sampling_rate = 200
+        if mode == 1:
+            max_sampling_rate = 800
+            return [200, 400, 800]
+        elif mode == 2:
+            max_sampling_rate = 1000
+            return [200, 400, 800, 1000]
+        elif mode == 3:
+            max_sampling_rate = 200
+            return [200]
+        elif mode == 4 or mode[0] == 0:  # BUG: mode is int, mode[0] is invalid
+            max_sampling_rate = 400
+            return [200, 400]
+
+    def set_camera_mode(self, mode_value):
+        """
+        Set the camera frame rate mode.
+
+        This function sets the camera mode (only for sync_400 devices that also support
+        sync_200). It must be called **before** `deep_gaze_init()` – the library reads
+        the configuration file and applies the mode during initialization.
+
+        The mode is written into the `dp_camera_tunning.bin` at runtime; the camera is
+        opened with the chosen setting and cannot be reconfigured after initialization.
+
+        Args:
+            mode_value (int): Target mode. Only the following values are accepted:
+                - CAMERA_MODE_SYNC_400 (0) : native 400 fps
+                - CAMERA_MODE_SYNC_200 (3) : down‑sampled 200 fps (ROI 1024×1024,
+                  exposure 2500 µs, identical to native 200 devices)
+
+        Raises:
+            Exception: If the underlying C function returns a code other than ET_SUCCESS.
+                This can happen if `mode_value` is invalid, the device is not a
+                sync_400 device, or the call fails internally.
+
+        Returns:
+            None
+        """
+        mode = ctypes.c_int(mode_value)
+        ret = self._et_native_lib.pupil_io_set_camera_mode(ctypes.byref(mode))
+        if ret != ET_ReturnCode.ET_SUCCESS:
+            raise Exception(f"pupil_io_set_camera_mode failed with code {ret}")
+
+    def get_camera_mode(self):
+        """
+        Query the currently active camera frame rate mode and ROI geometry.
+
+        This function retrieves the runtime mode and the ROI rectangles for the left
+        and right cameras. The values are determined by the `dp_camera_tunning.bin`
+        file and are the single source of truth – clients should **not** hard‑code
+        ROI dimensions or offsets.
+
+        Call this function **after** `deep_gaze_init()` has succeeded. The returned
+        ROI information can be used to allocate preview buffers and layout the image
+        rectangles on the UI.
+
+        Args:
+            None
+
+        Returns:
+            tuple: A 3‑element tuple containing:
+                - mode (int): The current camera mode (see CameraMode.h for values).
+                - left_roi (numpy.ndarray): 4‑element int32 array [x, y, w, h] for the
+                  left camera ROI in the full sensor coordinate system (1280×1024).
+                  These values define both the ROI buffer size (w×h) and the paste
+                  position (x,y) on the canvas.
+                - right_roi (numpy.ndarray): 4‑element int32 array [x, y, w, h] for
+                  the right camera ROI, with the same definition as `left_roi`.
+
+        Raises:
+            Exception: If the underlying C function returns a code other than ET_SUCCESS.
+                This typically indicates that the function was called before
+                `deep_gaze_init()` or that the DLL is not properly initialized.
+
+        Notes:
+            - The `mode` parameter in the C++ signature is an output pointer; here it is
+              returned as the first element of the tuple.
+            - Both `left_roi` and `right_roi` are allocated as NumPy arrays and passed
+              by pointer to the DLL.
+        """
+        mode = np.zeros(1, dtype=np.int32)  # 单个 int32
+        left_roi = np.zeros(4, dtype=np.int32)  # 长度4的 int32 数组
+        right_roi = np.zeros(4, dtype=np.int32)
+        ret = self._et_native_lib.pupil_io_get_camera_mode(
+            mode.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            left_roi.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            right_roi.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
+        )
+        if ret != ET_ReturnCode.ET_SUCCESS:
+            raise Exception(f"pupil_io_set_camera_mode failed with code {ret}")
+        return mode[0], left_roi, right_roi
 
     def previewer_start(self, udp_host: str, udp_port: int, draw_preview_annotations: bool = True):
         """
@@ -679,7 +810,9 @@ class Pupilio:
         #     CalibrationUI(pupil_io=self, screen=screen).draw(validate=validate, bg_color=bg_color)
         # else:
         #     CalibrationUI(pupil_io=self, screen=screen).draw_hands_free(validate=validate, bg_color=bg_color)
-
+        # recovery_mode = self.get_camera_mode()
+        support_sampling_rate = self.query_support_samping_rate()
+        self.set_camera_mode(3)
         if screen is None:
             # 创建默认的 PyGame 全屏窗口
             import pygame
@@ -695,6 +828,13 @@ class Pupilio:
             ui.draw(validate=validate, bg_color=bg_color)
         else:
             ui.draw_hands_free(validate=validate, bg_color=bg_color)
+        if self.config.sampling_rate in support_sampling_rate:
+            if self.config.sampling_rate == 200:
+                self.set_camera_mode(3)
+            elif self.config.sampling_rate == 400:
+                self.set_camera_mode(0)
+            else:
+                raise ValueError("Sampling rate is not supported")
 
     @deprecated("1.1.2")
     def subscribe_sample(self, subscriber_func: Callable, args=(), kwargs=None):
@@ -951,6 +1091,17 @@ class Pupilio:
             start_y = (IMG_HEIGHT - h) // 2
             start_x = (IMG_WIDTH - w) // 2
             preview_imgs[idx, start_y:start_y + h, start_x:start_x + w, :] = original_img
+
+            if self.config.sampling_rate == 400:
+                RECT_YELLOW = (0, 255, 255)
+                if idx == 0:
+                    rect = (320, 385, 960, 420)
+                else:
+                    rect = (0, 356, 960, 420)
+                pt1 = (rect[0], rect[1])
+                pt2 = (rect[0] + rect[2], rect[1] + rect[3])
+                cv2.rectangle(preview_imgs[idx], pt1, pt2, RECT_YELLOW, 2)
+
             cv2.rectangle(preview_imgs[idx], (0, 0), (IMG_WIDTH - 1, IMG_HEIGHT - 1), FRAME_COLOR,
                           FRAME_WIDTH)
             canvas_h, canvas_w, _ = eye1_canvas.shape
@@ -971,15 +1122,18 @@ class Pupilio:
             numpy.ndarray: A 3D array containing the left and right grayscale preview images.
         """
 
-        if self.sampling_rate == 200:
-            # Initialize arrays for preview images, eye bounds, pupil centers, and CR centers
-            IMG_HEIGHT, IMG_WIDTH = 1024, 1280  # Dimensions of the preview images
-            preview_left_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
-            preview_right_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
-        else:
-            preview_left_img = np.zeros((self.LEFT_IMG_HEIGHT, self.LEFT_IMG_WIDTH), dtype=np.uint8)
-            preview_right_img = np.zeros((self.RIGHT_IMG_HEIGHT, self.RIGHT_IMG_WIDTH), dtype=np.uint8)
+        # if self.max_sampling_rate == 200:
+        #     # Initialize arrays for preview images, eye bounds, pupil centers, and CR centers
+        #     IMG_HEIGHT, IMG_WIDTH = 1024, 1280  # Dimensions of the preview images
+        #     preview_left_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
+        #     preview_right_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
+        # else:
+        #     preview_left_img = np.zeros((self.LEFT_IMG_HEIGHT, self.LEFT_IMG_WIDTH), dtype=np.uint8)
+        #     preview_right_img = np.zeros((self.RIGHT_IMG_HEIGHT, self.RIGHT_IMG_WIDTH), dtype=np.uint8)
 
+        IMG_HEIGHT, IMG_WIDTH = 1024, 1280  # Dimensions of the preview images
+        preview_left_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
+        preview_right_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
         eye_rects = np.zeros(4 * 4, dtype=np.float32)  # Array for eye bounding boxes (4 coordinates per eye)
         pupil_centers = np.zeros(4 * 2, dtype=np.float32)  # Array for pupil centers (x, y for each pupil)
         glint_centers = np.zeros(4 * 2, dtype=np.float32)  # Array for CR centers (x, y for each CR)
@@ -1002,7 +1156,6 @@ class Pupilio:
                                             glint_centers)
         return preview_imgs
 
-
     def _recalibration(self) -> int:
         """
         Recalibration function
@@ -1010,13 +1163,13 @@ class Pupilio:
         return self._et_native_lib.pupil_io_recalibrate()
 
     def _draw_avatar_face(self,
-                        img: np.ndarray,
-                         eye_rect_a: tuple | np.ndarray,  # (x, y, w, h)
-                         eye_rect_b: tuple | np.ndarray,
-                         pupil_a: tuple | np.ndarray,  # (x, y)
-                         pupil_b: tuple | np.ndarray,
-                         avatar_pupil_left: tuple,  # 头像左瞳孔 (x, y)
-                         avatar_pupil_right: tuple) -> None:
+                          img: np.ndarray,
+                          eye_rect_a: tuple | np.ndarray,  # (x, y, w, h)
+                          eye_rect_b: tuple | np.ndarray,
+                          pupil_a: tuple | np.ndarray,  # (x, y)
+                          pupil_b: tuple | np.ndarray,
+                          avatar_pupil_left: tuple,  # 头像左瞳孔 (x, y)
+                          avatar_pupil_right: tuple) -> None:
         """
         将人脸头像通过瞳孔对齐绘制到图像上。
         参数:
