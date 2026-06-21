@@ -810,9 +810,8 @@ class Pupilio:
         #     CalibrationUI(pupil_io=self, screen=screen).draw(validate=validate, bg_color=bg_color)
         # else:
         #     CalibrationUI(pupil_io=self, screen=screen).draw_hands_free(validate=validate, bg_color=bg_color)
-        # recovery_mode = self.get_camera_mode()
-        support_sampling_rate = self.query_support_samping_rate()
-        self.set_camera_mode(3)
+
+
         if screen is None:
             # 创建默认的 PyGame 全屏窗口
             import pygame
@@ -828,13 +827,6 @@ class Pupilio:
             ui.draw(validate=validate, bg_color=bg_color)
         else:
             ui.draw_hands_free(validate=validate, bg_color=bg_color)
-        if self.config.sampling_rate in support_sampling_rate:
-            if self.config.sampling_rate == 200:
-                self.set_camera_mode(3)
-            elif self.config.sampling_rate == 400:
-                self.set_camera_mode(0)
-            else:
-                raise ValueError("Sampling rate is not supported")
 
     @deprecated("1.1.2")
     def subscribe_sample(self, subscriber_func: Callable, args=(), kwargs=None):
@@ -1092,15 +1084,15 @@ class Pupilio:
             start_x = (IMG_WIDTH - w) // 2
             preview_imgs[idx, start_y:start_y + h, start_x:start_x + w, :] = original_img
 
-            if self.config.sampling_rate == 400:
-                RECT_YELLOW = (0, 255, 255)
-                if idx == 0:
-                    rect = (320, 385, 960, 420)
-                else:
-                    rect = (0, 356, 960, 420)
-                pt1 = (rect[0], rect[1])
-                pt2 = (rect[0] + rect[2], rect[1] + rect[3])
-                cv2.rectangle(preview_imgs[idx], pt1, pt2, RECT_YELLOW, 2)
+            # if self.config.sampling_rate == 400:
+            #     RECT_YELLOW = (0, 255, 255)
+            #     if idx == 0:
+            #         rect = (320, 385, 960, 420)
+            #     else:
+            #         rect = (0, 356, 960, 420)
+            #     pt1 = (rect[0], rect[1])
+            #     pt2 = (rect[0] + rect[2], rect[1] + rect[3])
+            #     cv2.rectangle(preview_imgs[idx], pt1, pt2, RECT_YELLOW, 2)
 
             cv2.rectangle(preview_imgs[idx], (0, 0), (IMG_WIDTH - 1, IMG_HEIGHT - 1), FRAME_COLOR,
                           FRAME_WIDTH)
