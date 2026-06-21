@@ -51,6 +51,26 @@ from .callback import CalibrationListener
 from .default_config import DefaultConfig
 from .misc import ET_ReturnCode, LocalConfig, Calculator
 
+# 常量对齐C++源码
+SCREEN_CENTER_X = 960.0
+SCREEN_CENTER_Y = 540.0
+SCALE_X = 7.0
+SCALE_Y = 10.0
+BEST_RANGE_R = 80.0    # 黄色最优圈半径
+BOUNDARY_R = 320.0     # 外圈边界半径
+K_Z_RADIUS = 1.0       # Z对人脸圆半径缩放系数
+MIN_FACE_R = 10.0
+Z_OPTIMAL_BASE = -500.0
+Z_SAFE_MIN = -600.0
+Z_SAFE_MAX = -400.0
+LINE_THICK_BOUND = 10
+LINE_THICK_BEST = 6
+
+# 颜色常量 RGB 0~255
+COLOR_GREEN = np.array([0, 255, 0], dtype=np.float32)
+COLOR_RED = np.array([255, 0, 0], dtype=np.float32)
+COLOR_YELLOW = np.array([255, 255, 0], dtype=np.float32)
+COLOR_BLACK = (0, 0, 0)
 
 class CalibrationUI(object):
     def __init__(self, pupil_io, screen):
@@ -655,100 +675,114 @@ class CalibrationUI(object):
         self._screen.blit(self._right_previewer_surface, self._RIGHT_PREVIEWER_POS)
 
     def _draw_adjust_position(self):
-        if (not self._just_pos_sound_once):
+        # 原有音效逻辑保留
+        if not self._just_pos_sound_once:
             if self._hands_free:
                 self._just_pos_sound.play()
             self._just_pos_sound_once = True
-            # time.sleep(5)
 
-        _instruction_text = " "
-        _color = [255, 255, 255]
-        _eyebrow_center_point = [-1, -1]
+        _instruction_text = ""
         _start_time = time.time()
         _status, _face_position = self._pupil_io.face_position()
         _face_position = _face_position.tolist()
-
         logging.info(f'Get face position cost {(time.time() - _start_time):.4f} seconds.')
         logging.info(f'Face position: {str(_face_position)}')
 
-        _face_pos_x = _face_position[0]
-        _face_pos_y = _face_position[1]
-        _face_pos_z = _face_position[2]  # Emulating face_pos.z for testing
+        # 解析三维坐标 对应 sg->facePos.x/y/z
+        face_mm_x = _face_position[0]
+        face_mm_y = _face_position[1]
+        face_mm_z = _face_position[2]
 
-        # face cartoon
-        # Update face point (righteye~=204, lefteye~=137, bino~=165)
+        # 左右眼X偏移补偿（保留原有逻辑）
         if self._pupil_io.config.active_eye in [-1, 'left']:
-            _face_x_offset = 32
+            face_x_offset = 32.0
         elif self._pupil_io.config.active_eye in [1, 'right']:
-            _face_x_offset = -32
+            face_x_offset = -32.0
         else:
-            _face_x_offset = 0
+            face_x_offset = 0.0
 
-        _eyebrow_center_point[0] = self._screen.get_width() // 2 + (_face_pos_x - 172.08 + _face_x_offset) * 10
-        _eyebrow_center_point[1] = self._screen.get_height() // 2 + (_face_pos_y - 96.79) * 10
+        # ========== 1. 毫米坐标转屏幕像素（完全对齐C++公式） ==========
+        # C++: fpx = 960 + (sg->facePos.x - 172.08f) * scaleX
+        face_px_x = SCREEN_CENTER_X + (face_mm_x - 172.08 + face_x_offset) * SCALE_X
+        # C++: fpy = 540 + (sg->facePos.y - 110.0f) * scaleY
+        face_px_y = SCREEN_CENTER_Y + (face_mm_y - 110.0) * SCALE_Y
 
-        # Update rectangle color based on face point inside the rectangle
-        if self._face_in_rect.collidepoint(_eyebrow_center_point):
-            _rectangle_color = self._GREEN
-        else:
-            _rectangle_color = self._RED
-            _instruction_text = self.config.instruction_head_center
-            # _instruction_text = str(_face_position)
-
-        # Update face point color based on face position in Z-axis
-        if _face_pos_z == 0:
-            _face_pos_z = 65536
-        _color_ratio = 280 / abs(_face_pos_z)
-        if _face_pos_z > -530 or _face_pos_z < -630:
-            _face = self._frowning_face
-            _face_point_color = self._RED
-            if _face_pos_z > -530:
+        # ========== 2. 计算人脸圆点颜色（Z轴控制红-绿渐变） ==========
+        if face_mm_z > Z_SAFE_MAX or face_mm_z < Z_SAFE_MIN:
+            # Z超出安全区间：纯红色
+            face_rgb = COLOR_RED
+            if face_mm_z > Z_SAFE_MAX:
                 _instruction_text = self.config.instruction_face_far
-            if _face_pos_z < -630:
+            if face_mm_z < Z_SAFE_MIN:
                 _instruction_text = self.config.instruction_face_near
         else:
-            _face = self._smiling_face
-            _face_point_color = tuple(
-                np.multiply(self._GREEN, (1 - _color_ratio)) + np.multiply(self._RED, _color_ratio))
+            # Z在安全区间：偏离基准-500越多越红
+            ratio = abs(face_mm_z - Z_OPTIMAL_BASE) / 100.0
+            ratio = min(ratio, 1.0)
+            face_rgb = COLOR_GREEN * (1.0 - ratio) + COLOR_RED * ratio
 
-        # scale the face image
-        _face = pygame.transform.scale(_face, (int(_color_ratio * 256), int(_color_ratio * 256)))
-        _face_w, _face_h = _face.get_size()
+        # ========== 3. 动态计算人脸实心圆半径（随Z远近变化） ==========
+        face_radius = BEST_RANGE_R + (face_mm_z - Z_OPTIMAL_BASE) * K_Z_RADIUS
+        face_radius = max(face_radius, MIN_FACE_R)
 
-        # Draw rectangle
-        pygame.draw.rect(self._screen, _rectangle_color, self._face_in_rect, 5)
+        # ========== 4. 判断人脸是否在外边界圈内，决定外圈颜色 ==========
+        # 人脸圆心到屏幕中心距离
+        dx = face_px_x - SCREEN_CENTER_X
+        dy = face_px_y - SCREEN_CENTER_Y
+        center_dist = np.sqrt(dx ** 2 + dy ** 2)
+        is_inside_bound = (center_dist + face_radius) <= BOUNDARY_R
 
-        if _status == ET_ReturnCode.ET_SUCCESS.value or not (
-                _face_position[0] == 0 and _face_position[1] == 0 and _face_position[2] == 0):
-            self._screen.blit(_face, (int(_eyebrow_center_point[0]), int(_eyebrow_center_point[1])))
+        # ========== 5. 三层圆环绘制（严格复刻C++渲染顺序：外圈→人脸圆→黄色最优圈置顶） ==========
+        # 绘制最外层边界环
+        bound_color = COLOR_GREEN if is_inside_bound else COLOR_RED
+        pygame.draw.circle(
+            self._screen, bound_color.astype(int),
+            (int(SCREEN_CENTER_X), int(SCREEN_CENTER_Y)),
+            int(BOUNDARY_R), width=LINE_THICK_BOUND
+        )
+        # 绘制人脸实心圆点
+        pygame.draw.circle(
+            self._screen, face_rgb.astype(int),
+            (int(face_px_x), int(face_px_y)),
+            int(face_radius)
+        )
+        # 绘制黄色最优目标圈（置顶，覆盖重叠区域）
+        pygame.draw.circle(
+            self._screen, COLOR_YELLOW.astype(int),
+            (int(SCREEN_CENTER_X), int(SCREEN_CENTER_Y)),
+            int(BEST_RANGE_R), width=LINE_THICK_BEST
+        )
 
-        _segment_text = _instruction_text.split("\n")
-        _shift = 0
-        for t in _segment_text:
-            text_surface = self._font.render(t, True, self._BLACK)
-            text_rect = text_surface.get_rect()
-            # text_rect.center = (self._screen_width // 2,
-            #                     190 + 700 + 20 + _shift)
-            text_rect.center = (int(_eyebrow_center_point[0] + _face_w // 2),
-                                int(_eyebrow_center_point[1]) + 100 + _shift + _face_h // 2)
-            _shift += text_rect.height
-            self._screen.blit(text_surface, text_rect)
+        # ========== 6. 原有文字绘制逻辑保留，微调位置 ==========
+        if _instruction_text:
+            _segment_text = _instruction_text.split("\n")
+            _shift = 0
+            text_base_y = face_px_y + face_radius + 20
+            for t in _segment_text:
+                text_surface = self._font.render(t, True, COLOR_BLACK)
+                text_rect = text_surface.get_rect()
+                text_rect.center = (int(face_px_x), int(text_base_y + _shift))
+                _shift += text_rect.height
+                self._screen.blit(text_surface, text_rect)
 
+        # ========== 7. 双手自由自动校准跳转逻辑（保留原有判断，更新判定条件） ==========
+        safe_z_range = (Z_SAFE_MIN <= face_mm_z <= Z_SAFE_MAX)
         if self._hands_free:
-            if (-630 <= _face_pos_z <= -530 and self._face_in_rect.collidepoint(_eyebrow_center_point)
-                    and self._hands_free_adjust_head_wait_time <= 0):
-                # meet the criterion and wait time > 0
+            if safe_z_range and is_inside_bound and self._hands_free_adjust_head_wait_time <= 0:
+                # 位置达标，自动切校准阶段
                 self._phase_adjust_position = False
                 self._calibration_preparing = True
-            elif (-630 <= _face_pos_z <= -530 and self._face_in_rect.collidepoint(_eyebrow_center_point)
-                  and not self._hands_free_adjust_head_wait_time <= 0):
+            elif safe_z_range and is_inside_bound and not self._hands_free_adjust_head_wait_time <= 0:
+                # 达标但未等待足够时长，倒计时
                 if self._hands_free_adjust_head_start_timestamp == 0:
                     self._hands_free_adjust_head_start_timestamp = time.time()
                 else:
-                    _tmp = time.time()
-                    self._hands_free_adjust_head_wait_time -= (_tmp - self._hands_free_adjust_head_start_timestamp)
-                    self._hands_free_adjust_head_start_timestamp = _tmp
+                    now = time.time()
+                    delta = now - self._hands_free_adjust_head_start_timestamp
+                    self._hands_free_adjust_head_wait_time -= delta
+                    self._hands_free_adjust_head_start_timestamp = now
             else:
+                # 位置不达标，重置计时
                 self._hands_free_adjust_head_start_timestamp = 0
 
     def _draw_text_center(self, text):
