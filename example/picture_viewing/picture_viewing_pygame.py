@@ -55,15 +55,15 @@ win = pygame.display.set_mode((scn_width, scn_height), FULLSCREEN | HWSURFACE)
 config = DefaultConfig()
 
 # If previewing the face image during calibration
-config.face_previewing = 1
+config.face_previewing = 0
 
 # Heuristic filter, recommended look_ahead = 2 (i.e., a noisy spike is determined by
 # 4 flanking samples)
-config.look_ahead = 2
+config.look_ahead = 4
 
 # Set the sampling rate (for models that support 400/800/1000 Hz),
 # on the 200 Hz model, sampling rate will fall back to 200 Hz
-config.sampling_rate = 200
+config.sampling_rate = 400
 
 # Set the calibration mode (2-point, 4-point, 5-point)
 config.cali_mode = 2
@@ -83,7 +83,7 @@ pupil_io.create_session(session_name="deepgaze_demo")
 
 # ---- Calibrate and validate ----
 # set 'validate' to True if you would like to verify the calibration results
-pupil_io.calibration_draw(validate=True, hands_free=False, screen=win)
+pupil_io.calibration_draw(validate=False, hands_free=False, screen=win)
 
 # ---- Start retrieving gaze data ----
 # start retrieving gaze
