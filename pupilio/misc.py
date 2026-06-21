@@ -84,6 +84,14 @@ class CalibrationMode(IntEnum):
     FIVE_POINTS = 5
 
 
+class CameraMode(IntEnum):
+    CAMERA_MODE_SYNC_400 = 0
+    CAMERA_MODE_SYNC_800 = 1
+    CAMERA_MODE_SYNC_1000 = 2
+    CAMERA_MODE_SYNC_200 = 3
+    CAMERA_MODE_ASYNC_400 = 4
+
+
 class ActiveEye(IntEnum):
     """Tracking left eye, right eye or both"""
     LEFT_EYE = -1

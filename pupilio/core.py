@@ -46,7 +46,7 @@ import numpy as np
 
 from .annotation import deprecated
 from .default_config import DefaultConfig
-from .misc import ET_ReturnCode, CalibrationMode
+from .misc import ET_ReturnCode, CalibrationMode, CameraMode
 
 
 # Author: GC Zhu
@@ -223,39 +223,53 @@ class Pupilio:
         self._et_native_lib.pupil_io_set_cali_mode(self.config.cali_mode, self.calibration_points)
         self.calibration_points = np.reshape(self.calibration_points, (-1, 2))
 
-        support_sampling_rate = self.query_support_samping_rate()
-        if not self.config.sampling_rate:
-            self.config.sampling_rate = support_sampling_rate[-1]
-        else:
-            if self.config.sampling_rate not in support_sampling_rate:
-                raise Exception("Do not support this sampling rate: %s" % self.config.sampling_rate)
-
-        if self.config.sampling_rate == 200:
-            self.set_camera_mode(3)
-        else:
-            self.set_camera_mode(0)
-
-        # Initialize Pupilio, raise an exception if initialization fails
+        # Initialize tracker, raise an exception if initialization fails
         if self._et_native_lib.pupil_io_init() != ET_ReturnCode.ET_SUCCESS.value:
             raise Exception("Pupilio init failed, please contact the developer!")
 
-        mode, left_roi, right_roi = self.get_camera_mode()
+        # we need to call set_camera_mode() before tracker initialization
+        self._camera_mode, self.left_roi, self.right_roi = self.get_camera_mode()
 
-        self.max_sampling_rate = 200
-        if mode == 1:
-            self.max_sampling_rate = 800
-        elif mode == 2:
-            self.max_sampling_rate = 1000
-        elif mode == 3:
-            self.max_sampling_rate = 200
-        elif mode == 4 or mode[0] == 0:
-            self.max_sampling_rate = 400
+        print(self._camera_mode, self.left_roi, self.right_roi)
 
-        self.LEFT_IMG_WIDTH: int = int(left_roi[2])
-        self.LEFT_IMG_HEIGHT: int = int(left_roi[3])
+        # supported sampling rate, for the 400_sync mode, the tracker support 200 hz and 400 hz
+        # if the camera configure file show that the camera is sync_400
+        if self._camera_mode == CameraMode.CAMERA_MODE_SYNC_400:
+            supported_sr = [200, 400]
+        else:
+            supported_sr = [200]
 
-        self.RIGHT_IMG_WIDTH: int = int(right_roi[2])
-        self.RIGHT_IMG_HEIGHT: int = int(right_roi[3])
+        # give a warning and raise an exception if user put in an un-supported sampling rate
+        if not self.config.sampling_rate:
+            self.config.sampling_rate = supported_sr[-1]
+        else:
+            if self.config.sampling_rate not in supported_sr:
+                raise Exception("Do not support this sampling rate: %s" % self.config.sampling_rate)
+
+        # if we have a sync_400 camera and want to run at 200 hz, we need to
+        # release, set_camera_mode, then init the tracker again
+        if  self._camera_mode == CameraMode.CAMERA_MODE_SYNC_400:
+            # release the tracker
+            if self._et_native_lib.pupil_io_release() != ET_ReturnCode.ET_SUCCESS.value:
+                raise Exception("Pupilio release failed, please contact the developer!")
+
+            if self.config.sampling_rate == 200:
+                self.set_camera_mode(CameraMode.CAMERA_MODE_SYNC_200)
+
+            if self._et_native_lib.pupil_io_init() != ET_ReturnCode.ET_SUCCESS.value:
+                raise Exception("Pupilio re-init failed, please contact the developer!")
+            print(f'\nChanged sample rate to 200 Hz and re-inited the tracker')
+
+            self._camera_mode, self.left_roi, self.right_roi = self.get_camera_mode()
+
+            print(self._camera_mode, self.left_roi, self.right_roi )
+
+
+        self.LEFT_IMG_WIDTH: int = int(self.left_roi[2])
+        self.LEFT_IMG_HEIGHT: int = int(self.left_roi[3])
+
+        self.RIGHT_IMG_WIDTH: int = int( self.right_roi[2])
+        self.RIGHT_IMG_HEIGHT: int = int( self.right_roi[3])
 
         self._face_pos = np.zeros(3, dtype=np.float32)
         self._pt = np.zeros(11, dtype=np.float32)
@@ -1136,6 +1150,7 @@ class Pupilio:
         #     preview_right_img = np.zeros((self.RIGHT_IMG_HEIGHT, self.RIGHT_IMG_WIDTH), dtype=np.uint8)
 
         IMG_HEIGHT, IMG_WIDTH = 1024, 1280  # Dimensions of the preview images
+
         preview_left_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
         preview_right_img = np.zeros((IMG_HEIGHT, IMG_WIDTH), dtype=np.uint8)
         eye_rects = np.zeros(4 * 4, dtype=np.float32)  # Array for eye bounding boxes (4 coordinates per eye)
@@ -1153,8 +1168,8 @@ class Pupilio:
                                                    glint_centers)
 
         # Copy data from native library back into the numpy arrays
-        ctypes.memmove(preview_left_img.ctypes.data, left_img_ptr, preview_left_img.nbytes)
-        ctypes.memmove(preview_right_img.ctypes.data, right_img_ptr, preview_right_img.nbytes)
+        # ctypes.memmove(preview_left_img.ctypes.data, left_img_ptr, preview_left_img.nbytes)
+        # ctypes.memmove(preview_right_img.ctypes.data, right_img_ptr, preview_right_img.nbytes)
 
         preview_imgs = self._process_images(preview_left_img, preview_right_img, eye_rects, pupil_centers,
                                             glint_centers)
