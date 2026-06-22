@@ -704,8 +704,8 @@ class CalibrationUI(object):
         # ========== 1. 毫米坐标转屏幕像素（完全对齐C++公式） ==========
         # C++: fpx = 960 + (sg->facePos.x - 172.08f) * scaleX
         face_px_x = SCREEN_CENTER_X + (face_mm_x - 172.08 + face_x_offset) * SCALE_X
-        # C++: fpy = 540 + (sg->facePos.y - 110.0f) * scaleY
-        face_px_y = SCREEN_CENTER_Y + (face_mm_y - 110.0) * SCALE_Y
+        # C++: fpy = 540 + (sg->facePos.y - 110.0f) * scaleY, I changed to 130 to accommodate the correct head box
+        face_px_y = SCREEN_CENTER_Y + (face_mm_y - 130.0) * SCALE_Y
 
         # ========== 2. 计算人脸圆点颜色（Z轴控制红-绿渐变） ==========
         if face_mm_z > Z_SAFE_MAX or face_mm_z < Z_SAFE_MIN:

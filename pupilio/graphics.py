@@ -52,6 +52,23 @@ from .default_config import DefaultConfig
 from .misc import ET_ReturnCode, LocalConfig, Calculator
 
 
+# Add these constants to the CalibrationUI class
+SCREEN_CENTER_X = 960.0
+SCREEN_CENTER_Y = 540.0
+SCALE_X = 7.0
+SCALE_Y = 10.0
+BEST_RANGE_R = 80.0    # 黄色最优圈半径
+BOUNDARY_R = 320.0     # 外圈边界半径
+K_Z_RADIUS = 1.0       # Z对人脸圆半径缩放系数
+MIN_FACE_R = 10.0
+Z_OPTIMAL_BASE = -500.0
+Z_SAFE_MIN = -600.0
+Z_SAFE_MAX = -400.0
+LINE_THICK_BOUND = 10
+LINE_THICK_BEST = 6
+
+
+
 class CalibrationUI(object):
     def __init__(self, pupil_io, screen):
 
@@ -72,6 +89,7 @@ class CalibrationUI(object):
         self._CRIMSON = (0.72, 0.16, 0.47)
         self._CORAL = (0.88, 0, 0)
         self._GRAY = (0, 0, 0)
+        self._YELLOW = (1, 1, -1)  # RGB in -1 to 1 space
 
         # error color
         self.error_color = self._RED
@@ -130,6 +148,36 @@ class CalibrationUI(object):
         #     colorSpace='rgb',
         #     units='pix'
         # )
+
+        # Add these to __init__ method
+        self._boundary_circle = visual.Circle(
+            win=self._screen,
+            radius=BOUNDARY_R,
+            lineWidth=LINE_THICK_BOUND,
+            lineColor=self._GREEN,
+            fillColor=None,
+            units='pix',
+            pos=(0, 0)
+        )
+
+        self._optimal_circle = visual.Circle(
+            win=self._screen,
+            radius=BEST_RANGE_R,
+            lineWidth=LINE_THICK_BEST,
+            lineColor=self._YELLOW,
+            fillColor=None,
+            units='pix',
+            pos=(0, 0)
+        )
+
+        self._face_dot = visual.Circle(
+            win=self._screen,
+            radius=MIN_FACE_R,
+            lineColor=self._GREEN,
+            fillColor=self._GREEN,
+            units='pix',
+            pos=(0, 0)
+        )
 
         self._left_previewer_img_stim = visual.GratingStim(
             win=self._screen,
@@ -695,101 +743,149 @@ class CalibrationUI(object):
         self._right_previewer_img_stim.draw()
 
     def _draw_adjust_position(self):
-        if (not self._just_pos_sound_once):
+        # Play sound once
+        if not self._just_pos_sound_once:
             if self._hands_free:
                 self._just_pos_sound.play()
             self._just_pos_sound_once = True
-            # time.sleep(5)
 
-        _instruction_text = " "
-        _eyebrow_center_point = [-1, -1]
+        _instruction_text = ""
         _start_time = time.time()
         _status, _face_position = self._pupil_io.face_position()
         _face_position = _face_position.tolist()
         logging.info(f'Get face position cost {(time.time() - _start_time):.4f} seconds.')
         logging.info(f'Face position: {str(_face_position)}')
 
-        _face_pos_x = _face_position[0]
-        _face_pos_y = _face_position[1]
-        _face_pos_z = _face_position[2]  # Emulating face_pos.z for testing
+        # Parse 3D coordinates
+        face_mm_x = _face_position[0]
+        face_mm_y = _face_position[1]
+        face_mm_z = _face_position[2]
 
-        # face cartoon
-        # Update face point (righteye~=204, lefteye~=137, bino~=165)
+        # Left/right eye X offset compensation
         if self._pupil_io.config.active_eye in [-1, 'left']:
-            _face_x_offset = 32
+            face_x_offset = 32.0
         elif self._pupil_io.config.active_eye in [1, 'right']:
-            _face_x_offset = -32
+            face_x_offset = -32.0
         else:
-            _face_x_offset = 0
+            face_x_offset = 0.0
 
-        _eyebrow_center_point[0] = (_face_pos_x - 172.08 + _face_x_offset) * 10
-        _eyebrow_center_point[1] = -(_face_pos_y - 96.79) * 10
+        # ========== 1. Convert mm coordinates to screen pixels ==========
+        # Using Pygame's coordinate system (top-left origin)
+        # Then convert to PsychoPy coordinates (center origin)
+        face_px_x = SCREEN_CENTER_X + (face_mm_x - 172.08 + face_x_offset) * SCALE_X
+        face_px_y = SCREEN_CENTER_Y + (face_mm_y - 130.0) * SCALE_Y
 
-        # Update rectangle color based on face point inside the rectangle
-        if self._face_in_rect.contains(_eyebrow_center_point[0], _eyebrow_center_point[1]):
-            _rectangle_color = self._GREEN
-        else:
-            _rectangle_color = self._RED
-            _instruction_text = self.config.instruction_head_center
+        # Convert to PsychoPy coordinates (center origin)
+        psychopy_x = face_px_x - self._screen_width // 2
+        psychopy_y = self._screen_height // 2 - face_px_y
 
-        # Update face point color based on face position in Z-axis
-        if _face_pos_z == 0:
-            _face_pos_z = 65536
-        _color_ratio = 280 / abs(_face_pos_z)
-        if _face_pos_z > -530 or _face_pos_z < -630:
-            _face = self._frowning_face
-            _face_point_color = self._RED
-            if _face_pos_z > -530:
+        # ========== 2. Calculate face dot color (Z-axis controls red-green gradient) ==========
+        if face_mm_z > Z_SAFE_MAX or face_mm_z < Z_SAFE_MIN:
+            # Z outside safe range: pure red
+            face_rgb = self._RED
+            if face_mm_z > Z_SAFE_MAX:
                 _instruction_text = self.config.instruction_face_far
-            if _face_pos_z < -630:
+            if face_mm_z < Z_SAFE_MIN:
                 _instruction_text = self.config.instruction_face_near
         else:
-            _face = self._smiling_face
-            _c = np.multiply(self._GREEN, (1 - _color_ratio)) + np.multiply(self._RED, _color_ratio)
-            _c = np.divide(np.subtract(_c, 128), 128)
-            _face_point_color = tuple(_c)
-            # print('rect color....', _face_point_color)
-            _face_point_color = self._GREEN
+            # Z in safe range: gradient from green to red based on distance from optimal
+            ratio = abs(face_mm_z - Z_OPTIMAL_BASE) / 100.0
+            ratio = min(ratio, 1.0)
+            # Convert from 0-255 to -1 to 1 for PsychoPy
+            r = 1.0 * (1.0 - ratio) + 1.0 * ratio  # Green to Red
+            g = 1.0 * (1.0 - ratio) + (-1.0) * ratio  # Green to Red
+            b = -1.0
+            face_rgb = (r, g, b)
 
-        # scale the face image
-        _face_w, _face_h = int(_color_ratio * 256), int(_color_ratio * 256)
+        # ========== 3. Calculate dynamic face circle radius ==========
+        face_radius = BEST_RANGE_R + (face_mm_z - Z_OPTIMAL_BASE) * K_Z_RADIUS
+        face_radius = max(face_radius, MIN_FACE_R)
 
-        # Draw a rectangle to signify the headbox
-        self._face_in_rect.lineColor = _face_point_color
-        self._face_in_rect.draw()
-        # print(self._face_in_rect.width)
+        # ========== 4. Check if face is within outer boundary ==========
+        dx = face_px_x - SCREEN_CENTER_X
+        dy = face_px_y - SCREEN_CENTER_Y
+        center_dist = np.sqrt(dx ** 2 + dy ** 2)
+        is_inside_bound = (center_dist + face_radius) <= BOUNDARY_R
 
-        if _status == ET_ReturnCode.ET_SUCCESS.value or not (
-                _face_position[0] == 0 and _face_position[1] == 0 and _face_position[2] == 0):
-            # Draw face point as a circle
-            # pygame.draw.circle(self._screen, _face_point_color, (int(_eyebrow_center_point[0]),
-            #                                                      int(_eyebrow_center_point[1])), 50)
-            _face.pos = (int(_eyebrow_center_point[0]), int(_eyebrow_center_point[1]))
-            _face.size = (_face_w, _face_h)
-            _face.draw()
+        # ========== 5. Draw three-layer circles (render order: outer → face dot → optimal) ==========
 
-        self._txt.text = _instruction_text
-        self._txt.pos = (int(_eyebrow_center_point[0]), int(_eyebrow_center_point[1]) - _face_h * 3 // 4)
-        self._txt.color = self._BLACK
-        self._txt.draw()
+        # Draw outer boundary circle
+        bound_color = self._GREEN if is_inside_bound else self._RED
+        # Need to create circle stim if not already created, or use existing
+        if not hasattr(self, '_boundary_circle'):
+            self._boundary_circle = visual.Circle(
+                win=self._screen,
+                radius=BOUNDARY_R,
+                lineWidth=LINE_THICK_BOUND,
+                lineColor=bound_color,
+                fillColor=None,
+                units='pix',
+                pos=(0, 0)
+            )
+        else:
+            self._boundary_circle.lineColor = bound_color
+        self._boundary_circle.draw()
 
+        # Draw face dot (filled circle)
+        if not hasattr(self, '_face_dot'):
+            self._face_dot = visual.Circle(
+                win=self._screen,
+                radius=face_radius,
+                lineColor=face_rgb,
+                fillColor=face_rgb,
+                units='pix',
+                pos=(psychopy_x, psychopy_y)
+            )
+        else:
+            self._face_dot.radius = face_radius
+            self._face_dot.lineColor = face_rgb
+            self._face_dot.fillColor = face_rgb
+            self._face_dot.pos = (psychopy_x, psychopy_y)
+        self._face_dot.draw()
+
+        # Draw yellow optimal target circle (on top)
+        if not hasattr(self, '_optimal_circle'):
+            self._optimal_circle = visual.Circle(
+                win=self._screen,
+                radius=BEST_RANGE_R,
+                lineWidth=LINE_THICK_BEST,
+                lineColor=self._YELLOW,
+                fillColor=None,
+                units='pix',
+                pos=(0, 0)
+            )
+        self._optimal_circle.draw()
+
+        # ========== 6. Draw instruction text ==========
+        if _instruction_text:
+            _segment_text = _instruction_text.split("\n")
+            _shift = 0
+            text_base_y = psychopy_y - face_radius - 20  # Above the face dot
+            for t in _segment_text:
+                self._txt.text = t
+                self._txt.color = self._BLACK
+                self._txt.pos = (psychopy_x, text_base_y + _shift)
+                _shift -= (self._txt.boundingBox[1] + self._txt.height)
+                self._txt.draw()
+
+        # ========== 7. Hands-free auto-calibration logic ==========
+        safe_z_range = (Z_SAFE_MIN <= face_mm_z <= Z_SAFE_MAX)
         if self._hands_free:
-            if (-630 <= _face_pos_z <= -530 and self._face_in_rect.contains(_eyebrow_center_point[0],
-                                                                            _eyebrow_center_point[1])
-                    and self._hands_free_adjust_head_wait_time <= 0):
-                # meet the criterion and wait time > 0
+            if safe_z_range and is_inside_bound and self._hands_free_adjust_head_wait_time <= 0:
+                # Position达标，自动切校准阶段
                 self._phase_adjust_position = False
                 self._calibration_preparing = True
-            elif (-630 <= _face_pos_z <= -530 and self._face_in_rect.contains(_eyebrow_center_point[0],
-                                                                              _eyebrow_center_point[1])
-                  and not self._hands_free_adjust_head_wait_time <= 0):
+            elif safe_z_range and is_inside_bound and not self._hands_free_adjust_head_wait_time <= 0:
+                # 达标但未等待足够时长，倒计时
                 if self._hands_free_adjust_head_start_timestamp == 0:
                     self._hands_free_adjust_head_start_timestamp = time.time()
                 else:
-                    _tmp = time.time()
-                    self._hands_free_adjust_head_wait_time -= (_tmp - self._hands_free_adjust_head_start_timestamp)
-                    self._hands_free_adjust_head_start_timestamp = _tmp
+                    now = time.time()
+                    delta = now - self._hands_free_adjust_head_start_timestamp
+                    self._hands_free_adjust_head_wait_time -= delta
+                    self._hands_free_adjust_head_start_timestamp = now
             else:
+                # 位置不达标，重置计时
                 self._hands_free_adjust_head_start_timestamp = 0
 
     def _draw_text_center(self, text):
