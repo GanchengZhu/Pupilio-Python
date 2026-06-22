@@ -66,7 +66,7 @@ config.look_ahead = 4
 config.sampling_rate = 400
 
 # Set the calibration mode (2-point, 4-point, 5-point)
-config.cali_mode = 2
+config.cali_mode = 4
 # alternatively, use the constants defined in .misc
 # config.cali_mode = CalibrationMode.FOUR_POINTS
 

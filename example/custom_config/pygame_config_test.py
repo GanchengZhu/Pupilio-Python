@@ -55,11 +55,11 @@ config.look_ahead = 2
 
 # Set the API to run in gaze simulation mode
 # 0 = use real hardware, 1 = simulate with mouse (useful for testing without hardware)
-config.simulation_mode = 1
+config.simulation_mode = 0
 
 # Active eye selection:
 # 0 = binocular (both eyes), -1 = left eye only, 1 = right eye only
-config.active_eye = 0
+config.active_eye = 1
 
 # Calibration mode: 2-point vs. 5-point
 # Both integer values and enum constants are supported:

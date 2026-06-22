@@ -1,6 +1,6 @@
 # _*_ coding: utf-8 _*_
 
-# Copyright (c) 2024, Hangzhou Deep Gaze Sci & Tech Ltd
+# Copyright (c) 2024, Hangzhou DeepGaze Sci & Tech Ltd
 # All Rights Reserved
 #
 # For use by  Hangzhou Deep Gaze Sci & Tech Ltd licencees only.
@@ -105,6 +105,9 @@ class DefaultConfig:
         # Get the absolute path of the current file's directory
         self._current_dir = os.path.abspath(os.path.dirname(__file__))
 
+        # default calibration instructions in Chinese
+        self._lang = "zh-CN"
+
         # Filter hyperparameters
         self.look_ahead: int = 2  # Look-ahead steps for predicting target position
 
@@ -200,10 +203,6 @@ class DefaultConfig:
             "Press \"R\" / click on the right mouse button to recalibrate."
         )  # Instruction for initiating recalibration (legend_recalibration)
 
-        #
-        self._lang = "zh-CN"
-        self.instruction_language()
-
         # show preview? 0=no, 1=yes
         self.face_previewing = 1
 
@@ -244,6 +243,10 @@ class DefaultConfig:
             self._cali_mode = CalibrationMode.FOUR_POINTS  # Assuming FIVE_POINTS exists in CalibrationMode
         else:
             raise ValueError("Invalid calibration mode. Must be 2, 5, or a CalibrationMode instance.")
+
+        # Update instructions when mode changes
+        self.instruction_language(self._lang)  # Re-generate instructions with new mode
+
 
     @property
     def active_eye(self):
@@ -334,6 +337,9 @@ class DefaultConfig:
         # Calibration entry instructions
         self.instruction_enter_calibration = "屏幕上会出现两个点，请依次注视这些点\n" \
                                              "按回车键或鼠标左键(或触击屏幕)开始校准"
+        if self.cali_mode == 4:
+            self.instruction_enter_calibration = "屏幕上会出现四个点，请依次注视这些点\n" \
+                                                 "按回车键或鼠标左键(或触击屏幕)开始校准"
 
         self.instruction_hands_free_calibration = (
             "倒计时结束后屏幕上会出现几个点，请依次注视这些点"
@@ -365,6 +371,9 @@ class DefaultConfig:
         # Calibration entry instructions
         self.instruction_enter_calibration = "Two points will appear on screen, please look at them in sequence\n" \
                                              "Press Enter or left-click the mouse (or touch the screen) to start calibration"
+        if self.cali_mode == 4:
+            self.instruction_enter_calibration = "Four points will appear on screen, please look at them in sequence\n" \
+                                                 "Press Enter or left-click the mouse (or touch the screen) to start calibration"
 
         self.instruction_hands_free_calibration = (
             "Following the countdown, several points will appear on screen, please look at them in sequence"
@@ -396,6 +405,10 @@ class DefaultConfig:
         # Calibration entry instructions
         self.instruction_enter_calibration = "Deux points apparaîtront à l'écran, veuillez les regarder dans l'ordre\n" \
                                              "Appuyez sur Entrée ou cliquez à gauche (cliquez sur l'écran) pour commencer l'étalonnage"
+        if self.cali_mode == 4:
+            self.instruction_enter_calibration = "Quatre points apparaîtront à l'écran, veuillez les regarder dans l'ordre\n" \
+                                                 "Appuyez sur Entrée ou cliquez à gauche (cliquez sur l'écran) pour commencer l'étalonnage"
+
 
         self.instruction_hands_free_calibration = (
             "Après le compte à rebours, plusieurs points apparaîtront à l'écran, veuillez les regarder dans l'ordre."
@@ -430,6 +443,13 @@ class DefaultConfig:
              "Presione Enter o haga clic con el botón izquierdo "
              "(haga clic en la pantalla) para comenzar la calibración")
 
+        if self.cali_mode == 4:
+            self.instruction_enter_calibration = \
+                ("Aparecerán cuatro puntos en la pantalla, por favor mírelos en orden\n"
+                 "Presione Enter o haga clic con el botón izquierdo "
+                 "(haga clic en la pantalla) para comenzar la calibración")
+
+
         self.instruction_hands_free_calibration = (
             "Después de la cuenta regresiva, aparecerán varios puntos en la pantalla, por favor mírelos en orden."
         )
@@ -460,6 +480,9 @@ class DefaultConfig:
         # Calibration entry instructions
         self.instruction_enter_calibration = "畫面上會出現兩個點，請按順序注視這些點\n" \
                                              "按下回車鍵或鼠標左鍵(點擊螢幕)開始校準"
+        if self.cali_mode == 4:
+            self.instruction_enter_calibration = "畫面上會出現肆個點，請按順序注視這些點\n" \
+                                                 "按下回車鍵或鼠標左鍵(點擊螢幕)開始校準"
 
         self.instruction_hands_free_calibration = (
             "倒數計時後畫面會顯示幾個點，請按順序注視這些點。"
@@ -489,8 +512,9 @@ class DefaultConfig:
         self.instruction_head_center = "画面の中央に頭を移動してください"
 
         # Calibration entry instructions
-        self.instruction_enter_calibration = "画面に2つの点が表示されますので、その順番で注視してください\nEnterキーまたは左クリック（画面をクリック）でキャリブレーションを開始します"
-
+        self.instruction_enter_calibration = "画面に2つの点が表示されますので、その順番で注視してください\n Enterキーまたは左クリック（画面をクリック）でキャリブレーションを開始します"
+        if self.cali_mode == 4:
+            self.instruction_enter_calibration = "画面に4つの点が表示されますので、その順番で注視してください\n nterキーまたは左クリック（画面をクリック）でキャリブレーションを開始します"
         self.instruction_hands_free_calibration = (
             "カウントダウン後、画面にいくつかの点が表示されますので、その順番で注視してください。"
         )
@@ -519,7 +543,9 @@ class DefaultConfig:
         self.instruction_head_center = "화면 중앙에 머리를 위치시켜 주세요"
 
         # Calibration entry instructions
-        self.instruction_enter_calibration = "화면에 두 개의 점이 나타나면 순서대로 주시하세요\nEnter 키 또는 왼쪽 클릭(화면 클릭)으로 교정 시작"
+        self.instruction_enter_calibration = "화면에 두 개의 점이 나타나면 순서대로 주시하세요\n Enter 키 또는 왼쪽 클릭(화면 클릭)으로 교정 시작"
+        if self.cali_mode == 4:
+            self.instruction_enter_calibration = "화면에 네 개의 점이 나타나면 순서대로 주시하세요\n Enter 키 또는 왼쪽 클릭(화면 클릭)으로 교정 시작"
 
         self.instruction_hands_free_calibration = (
             "카운트다운 후 화면에 여러 점이 나타납니다. 순서대로 주시해주세요."

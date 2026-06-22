@@ -230,8 +230,6 @@ class Pupilio:
         # we need to call set_camera_mode() before tracker initialization
         self._camera_mode, self.left_roi, self.right_roi = self.get_camera_mode()
 
-        print(self._camera_mode, self.left_roi, self.right_roi)
-
         # supported sampling rate, for the 400_sync mode, the tracker support 200 hz and 400 hz
         # if the camera configure file show that the camera is sync_400
         if self._camera_mode == CameraMode.CAMERA_MODE_SYNC_400:
