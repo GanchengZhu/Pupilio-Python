@@ -63,8 +63,8 @@ MIN_FACE_R = 10.0
 Z_OPTIMAL_BASE = -500.0
 Z_SAFE_MIN = -600.0
 Z_SAFE_MAX = -400.0
-LINE_THICK_BOUND = 10
-LINE_THICK_BEST = 6
+LINE_THICK_BOUND = 6
+LINE_THICK_BEST = 3
 
 # 颜色常量 RGB 0~255
 COLOR_GREEN = np.array([0, 255, 0], dtype=np.float32)
@@ -245,7 +245,7 @@ class CalibrationUI(object):
         #     self._screen_height - self._PREVIEWER_IMG_HEIGHT // 2 - 10]
         #
 
-        # TOP-BOTTOM COODS
+        # TOP-BOTTOM COORDS
         self._LEFT_PREVIEWER_POS[0] -= self._PREVIEWER_IMG_WIDTH // 2
         self._RIGHT_PREVIEWER_POS[0] -= self._PREVIEWER_IMG_WIDTH // 2
         self._LEFT_PREVIEWER_POS[1] -= self._PREVIEWER_IMG_HEIGHT // 2
@@ -322,8 +322,7 @@ class CalibrationUI(object):
 
         if not isinstance(estimated_point, np.ndarray):
             return
-        text_rect.center = (estimated_point[0],
-                            estimated_point[1])
+        text_rect.center = (estimated_point[0], estimated_point[1])
         self._screen.blit(text_surface, text_rect)
 
         pygame.draw.line(self._screen, self._BLACK, ground_truth_point, estimated_point, width=1)
@@ -737,11 +736,21 @@ class CalibrationUI(object):
         # ========== 5. 三层圆环绘制（严格复刻C++渲染顺序：外圈→人脸圆→黄色最优圈置顶） ==========
         # 绘制最外层边界环
         bound_color = COLOR_GREEN if is_inside_bound else COLOR_RED
-        pygame.draw.circle(
+        # pygame.draw.circle(
+        #     self._screen, bound_color.astype(int),
+        #     (int(SCREEN_CENTER_X), int(SCREEN_CENTER_Y)),
+        #     int(BOUNDARY_R), width=LINE_THICK_BOUND
+        # )
+
+        rect_side = int(BOUNDARY_R * 2)  # side length = diameter
+        rect_x = int(SCREEN_CENTER_X - BOUNDARY_R)
+        rect_y = int(SCREEN_CENTER_Y - BOUNDARY_R)
+        pygame.draw.rect(
             self._screen, bound_color.astype(int),
-            (int(SCREEN_CENTER_X), int(SCREEN_CENTER_Y)),
-            int(BOUNDARY_R), width=LINE_THICK_BOUND
+            (rect_x, rect_y, rect_side, rect_side),
+            width=LINE_THICK_BOUND
         )
+
         # 绘制人脸实心圆点
         # pygame.draw.circle(
         #     self._screen, face_rgb.astype(int),

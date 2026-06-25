@@ -64,8 +64,8 @@ MIN_FACE_R = 10.0
 Z_OPTIMAL_BASE = -500.0
 Z_SAFE_MIN = -600.0
 Z_SAFE_MAX = -400.0
-LINE_THICK_BOUND = 10
-LINE_THICK_BEST = 6
+LINE_THICK_BOUND = 6
+LINE_THICK_BEST =3
 
 
 
@@ -73,6 +73,7 @@ class CalibrationUI(object):
     def __init__(self, pupil_io, screen):
 
         # pupil.io tracker object
+
         self._pupil_io = pupil_io
         # print('Using %s (with %s) for sounds' % (sound.audioLib, sound.audioDriver))
 
@@ -314,6 +315,33 @@ class CalibrationUI(object):
 
         # animation frequency
         self._animation_frequency = self.config.cali_target_animation_frequency
+
+        # variables
+        self._phase_adjust_position = True
+        self._calibration_preparing = False
+        self._validation_preparing = False
+        self._phase_calibration = False
+        self._phase_validation = False
+        self._need_validation = False
+        self.graphics_finished = False
+        self._exit = False
+        self._calibration_drawing_list = [0, 1, 2, 3, 4]
+        self._calibration_timer = 0
+        self._validation_timer = 0
+        self._validation_left_sample_store = [[] * len(self._validation_points)]
+        self._validation_right_sample_store = [[] * len(self._validation_points)]
+        self._validation_left_eye_distance_store = [[] * len(self._validation_points)]
+        self._validation_right_eye_distance_store = [[] * len(self._validation_points)]
+        self._n_validation = 0  # n times of validation
+        self._error_threshold = 2
+        self._calibration_point_index = 0
+        self._drawing_validation_result = False
+        self._hands_free = False
+        self._hands_free_adjust_head_wait_time = 5  # 3
+        self._hands_free_adjust_head_start_timestamp = 0
+        self._validation_finished_timer = 0
+        self._preparing_hands_free_start = None
+
 
     def initialize_variables(self):
         """Initialize variables for plotting and visualization."""
@@ -813,19 +841,34 @@ class CalibrationUI(object):
 
         # Draw outer boundary circle
         bound_color = self._GREEN if is_inside_bound else self._RED
-        # Need to create circle stim if not already created, or use existing
-        if not hasattr(self, '_boundary_circle'):
-            self._boundary_circle = visual.Circle(
-                win=self._screen,
-                radius=BOUNDARY_R,
-                lineWidth=LINE_THICK_BOUND,
-                lineColor=bound_color,
-                fillColor=None,
-                units='pix',
-                pos=(0, 0)
-            )
-        else:
-            self._boundary_circle.lineColor = bound_color
+        # # Need to create circle stim if not already created, or use existing
+        # if not hasattr(self, '_boundary_circle'):
+        #     self._boundary_circle = visual.Circle(
+        #         win=self._screen,
+        #         radius=BOUNDARY_R,
+        #         lineWidth=LINE_THICK_BOUND,
+        #         lineColor=bound_color,
+        #         fillColor=None,
+        #         units='pix',
+        #         pos=(0, 0)
+        #     )
+        # else:
+        #     self._boundary_circle.lineColor = bound_color
+
+        # Keep the same attribute name, but actually create/store a Rectangle
+        # Use visual.Rect instead of visual.Circle
+        # width = height = diameter (so the circle would be inscribed)
+        self._boundary_circle = visual.Rect(
+            win=self._screen,
+            width=2 * BOUNDARY_R,  # diameter
+            height=2 * BOUNDARY_R,  # diameter
+            lineWidth=LINE_THICK_BOUND,
+            lineColor=bound_color,
+            fillColor=None,
+            units='pix',
+            pos=(0, 0)  # center of the screen
+        )
+
         self._boundary_circle.draw()
 
         # Draw face dot (filled circle)
