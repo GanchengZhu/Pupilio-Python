@@ -1,6 +1,6 @@
 # Introduction of Pupilio
 
-Pupilio is a lightweight package developed by Hangzhou Shenning Technology Co., Ltd. It is designed to drive and control the Pupil.IO Eye Tracker, offering a straightforward and user-friendly interface for ease of use. This tool allows for the control of eye-tracking data recording, calibration, and validation. Its calibration and validation UI can be seamlessly integrated with PsychoPy, PyGame, and other platforms.
+Pupilio is a lightweight package developed by Hangzhou Technology Technology Co., Ltd. It is designed to drive and control the Pupil.IO Eye Tracker, offering a straightforward and user-friendly interface for ease of use. This tool allows for the control of eye-tracking data recording, calibration, and validation. Its calibration and validation UI can be seamlessly integrated with PsychoPy, PyGame, and other platforms.
 
 
 ## What's Pupil.IO
@@ -9,7 +9,7 @@ Pupilio is a lightweight package developed by Hangzhou Shenning Technology Co., 
 
 [Pupil.IO Homepage](https://www.deep-gaze.com/)
 
-[Pupil.IO](https://www.deep-gaze.com/) is a high-performance, high-speed, and high-precision eye tracking system designed and produced by Hangzhou Shenning Technology Co., Ltd. It can offer high samping rate and precise eye movement data and pupil data, making it advanced tool for scientific and clinical applications.
+[Pupil.IO](https://www.deep-gaze.com/) is a high-performance, high-speed, and high-precision eye tracking system designed and produced by Hangzhou DeepGaze Technology Co., Ltd. It can offer high samping rate and precise eye movement data and pupil data, making it advanced tool for scientific and clinical applications.
 
 
 ## Specifications of Eye Tracker

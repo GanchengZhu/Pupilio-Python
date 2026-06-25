@@ -13,10 +13,10 @@ from recommonmark.transform import AutoStructify
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'Pupilio Documentation'
-copyright = '2025, Pupilio'
-author = 'Pupilio'
-release = '1.3.1'
+project = 'pupilio Documentation'
+copyright = '2026, HangZhou Technology Technology Co., Ltd.'
+author = 'Gancheng Zhu'
+release = '1.5.0'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

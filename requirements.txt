@@ -1,4 +1,14 @@
-numpy
+numpy~=1.26.4
 websockets
-pygame
-opencv-python
+pygame~=2.6.1
+opencv-python~=4.11.0.86
+
+sphinx_rtd_theme~=3.1.0
+recommonmark~=0.7.1
+pupilio~=1.4.0
+psychopy~=2025.2.4
+pywebview~=6.1
+pyvidplayer2~=0.9.28
+pandas~=2.3.3
+matplotlib~=3.10.7
+setuptools~=70.3.0
