@@ -1,8 +1,8 @@
 # _*_ coding: utf-8 _*_
-# Copyright (c) 2024, Hangzhou Deep Gaze Sci & Tech Ltd
+# Copyright (c) 2024, Hangzhou DeepGaze Science and Technology Co., Ltd
 # All Rights Reserved
 #
-# For use by  Hangzhou Deep Gaze Sci & Tech Ltd licencees only.
+# For use by  Hangzhou DeepGaze Science and Technology Co., Ltd licencees only.
 # Redistribution and use in source and binary forms, with or without
 # modification, are NOT permitted.
 #
@@ -10,7 +10,7 @@
 # notice, this list of conditions and the following disclaimer in
 # the documentation and/or other materials provided with the distribution.
 #
-# Neither name of  Hangzhou Deep Gaze Sci & Tech Ltd nor the name of
+# Neither name of  Hangzhou DeepGaze Science and Technology Co., Ltd nor the name of
 # contributors may be used to endorse or promote products derived from
 # this software without specific prior written permission.
 #
@@ -774,6 +774,8 @@ class CalibrationUI(object):
         # Then convert to PsychoPy coordinates (center origin)
         face_px_x = SCREEN_CENTER_X + (face_mm_x - 172.08 + face_x_offset) * SCALE_X
         face_px_y = SCREEN_CENTER_Y + (face_mm_y - 130.0) * SCALE_Y
+        if self._pupil_io.config.sampling_rate==200:
+            face_px_y = SCREEN_CENTER_Y + (face_mm_y - 110.0) * SCALE_Y
 
         # Convert to PsychoPy coordinates (center origin)
         psychopy_x = face_px_x - self._screen_width // 2
@@ -827,21 +829,25 @@ class CalibrationUI(object):
         self._boundary_circle.draw()
 
         # Draw face dot (filled circle)
-        if not hasattr(self, '_face_dot'):
-            self._face_dot = visual.Circle(
-                win=self._screen,
-                radius=face_radius,
-                lineColor=face_rgb,
-                fillColor=face_rgb,
-                units='pix',
-                pos=(psychopy_x, psychopy_y)
-            )
-        else:
-            self._face_dot.radius = face_radius
-            self._face_dot.lineColor = face_rgb
-            self._face_dot.fillColor = face_rgb
-            self._face_dot.pos = (psychopy_x, psychopy_y)
-        self._face_dot.draw()
+        # if not hasattr(self, '_face_dot'):
+        #     self._face_dot = visual.Circle(
+        #         win=self._screen,
+        #         radius=face_radius,
+        #         lineColor=face_rgb,
+        #         fillColor=face_rgb,
+        #         units='pix',
+        #         pos=(psychopy_x, psychopy_y)
+        #     )
+        # else:
+        #     self._face_dot.radius = face_radius
+        #     self._face_dot.lineColor = face_rgb
+        #     self._face_dot.fillColor = face_rgb
+        #     self._face_dot.pos = (psychopy_x, psychopy_y)
+        # self._face_dot.draw()
+
+        self._smiling_face.size = face_radius*3
+        self._smiling_face.pos = [psychopy_x, psychopy_y]
+        self._smiling_face.draw()
 
         # Draw yellow optimal target circle (on top)
         if not hasattr(self, '_optimal_circle'):

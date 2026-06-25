@@ -49,26 +49,32 @@ from pupilio.misc import CalibrationMode
 # A custom config file allows fine control over tracker parameters
 config = DefaultConfig()
 
-# Heuristic filter: recommended look_ahead = 2
-# A noisy spike is determined by 4 flanking samples
-config.look_ahead = 2
-
+#----------- Tracker parameters-------------------
 # Set the API to run in gaze simulation mode
 # 0 = use real hardware, 1 = simulate with mouse (useful for testing without hardware)
 config.simulation_mode = 0
 
 # Active eye selection:
 # 0 = binocular (both eyes), -1 = left eye only, 1 = right eye only
-config.active_eye = 1
+config.active_eye = 0
 
-# Calibration mode: 2-point vs. 5-point
+# Heuristic filter: recommended look_ahead = 2
+# A noisy spike is determined by 4 flanking samples
+config.look_ahead = 2
+
+# Calibration mode: 2-point vs. 4-point (also supports 5-point, but it's roughly the same as 2-point)
 # Both integer values and enum constants are supported:
-# config.cali_mode = CalibrationMode.TWO_POINTS
-# config.cali_mode = CalibrationMode.FIVE_POINTS
+config.cali_mode = CalibrationMode.TWO_POINTS
+# config.cali_mode = CalibrationMode.FOUR_POINTS
 # config.cali_mode = 2  (two-point)
-# config.cali_mode = 5  (five-point)
-config.cali_mode = 2
+# config.cali_mode = 4  (four-point)
 
+# Kappa verification during calibration, enable this if you are dealing with patients with strabismus
+# as the kappa angle is typically outside the normal range, forcing the tracker to check if the estimated
+# kappa is in the typical range would cause calibration to fail. (0-disable, 1-enable, by default)
+config.enable_kappa_verification = 1
+
+#----------- Calibration UI parameters-------------------
 # Show face preview during calibration (1 = enable, 0 = disable)
 config.face_previewing = 1
 

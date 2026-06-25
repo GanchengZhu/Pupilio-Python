@@ -1,8 +1,8 @@
 # _*_ coding: utf-8 _*_
-# Copyright (c) 2024, Hangzhou Deep Gaze Sci & Tech Ltd
+# Copyright (c) 2024, Hangzhou DeepGaze Science and Technology Co., Ltd
 # All Rights Reserved
 #
-# For use by  Hangzhou Deep Gaze Sci & Tech Ltd licencees only.
+# For use by  Hangzhou DeepGaze Science and Technology Co., Ltd licencees only.
 # Redistribution and use in source and binary forms, with or without
 # modification, are NOT permitted.
 #
@@ -10,7 +10,7 @@
 # notice, this list of conditions and the following disclaimer in
 # the documentation and/or other materials provided with the distribution.
 #
-# Neither name of  Hangzhou Deep Gaze Sci & Tech Ltd nor the name of
+# Neither name of  Hangzhou DeepGaze Science and Technology Co., Ltd nor the name of
 # contributors may be used to endorse or promote products derived from
 # this software without specific prior written permission.
 #

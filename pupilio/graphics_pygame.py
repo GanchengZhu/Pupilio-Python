@@ -1,8 +1,8 @@
 # _*_ coding: utf-8 _*_
-# Copyright (c) 2024, Hangzhou Deep Gaze Sci & Tech Ltd
+# Copyright (c) 2024, Hangzhou DeepGaze Science and Technology Co., Ltd
 # All Rights Reserved
 #
-# For use by  Hangzhou Deep Gaze Sci & Tech Ltd licencees only.
+# For use by  Hangzhou DeepGaze Science and Technology Co., Ltd licencees only.
 # Redistribution and use in source and binary forms, with or without
 # modification, are NOT permitted.
 #
@@ -10,7 +10,7 @@
 # notice, this list of conditions and the following disclaimer in
 # the documentation and/or other materials provided with the distribution.
 #
-# Neither name of  Hangzhou Deep Gaze Sci & Tech Ltd nor the name of
+# Neither name of  Hangzhou DeepGaze Science and Technology Co., Ltd nor the name of
 # contributors may be used to endorse or promote products derived from
 # this software without specific prior written permission.
 #
@@ -706,6 +706,8 @@ class CalibrationUI(object):
         face_px_x = SCREEN_CENTER_X + (face_mm_x - 172.08 + face_x_offset) * SCALE_X
         # C++: fpy = 540 + (sg->facePos.y - 110.0f) * scaleY, I changed to 130 to accommodate the correct head box
         face_px_y = SCREEN_CENTER_Y + (face_mm_y - 130.0) * SCALE_Y
+        if self._pupil_io.config.sampling_rate==200:
+            face_px_y = SCREEN_CENTER_Y + (face_mm_y - 110.0) * SCALE_Y
 
         # ========== 2. 计算人脸圆点颜色（Z轴控制红-绿渐变） ==========
         if face_mm_z > Z_SAFE_MAX or face_mm_z < Z_SAFE_MIN:
@@ -741,11 +743,26 @@ class CalibrationUI(object):
             int(BOUNDARY_R), width=LINE_THICK_BOUND
         )
         # 绘制人脸实心圆点
-        pygame.draw.circle(
-            self._screen, face_rgb.astype(int),
-            (int(face_px_x), int(face_px_y)),
-            int(face_radius)
-        )
+        # pygame.draw.circle(
+        #     self._screen, face_rgb.astype(int),
+        #     (int(face_px_x), int(face_px_y)),
+        #     int(face_radius)
+        # )
+
+        # the old cartoon approach
+        _face_resized = pygame.transform.scale(
+            self._smiling_face,
+            (int(face_radius*3), int(face_radius*3)))
+        if face_mm_z > Z_SAFE_MAX or face_mm_z < Z_SAFE_MIN:
+            _face_resized = pygame.transform.scale(
+                self._frowning_face,
+                (int(face_radius * 3), int(face_radius * 3)))
+
+        self._screen.blit(
+            _face_resized,
+            (int(face_px_x)-int(face_radius),
+             int(face_px_y)-int(face_radius)))
+
         # 绘制黄色最优目标圈（置顶，覆盖重叠区域）
         pygame.draw.circle(
             self._screen, COLOR_YELLOW.astype(int),
