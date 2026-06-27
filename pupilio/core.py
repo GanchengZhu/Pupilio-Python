@@ -247,16 +247,16 @@ class Pupilio:
         # if we have a sync_400 camera and want to run at 200 hz, we need to
         # release, set_camera_mode, then init the tracker again
         if  self._camera_mode == CameraMode.CAMERA_MODE_SYNC_400:
-            # release the tracker
-            if self._et_native_lib.pupil_io_release() != ET_ReturnCode.ET_SUCCESS.value:
-                raise Exception("Pupilio release failed, please contact the developer!")
-
             if self.config.sampling_rate == 200:
+                # release the tracker
+                if self._et_native_lib.pupil_io_release() != ET_ReturnCode.ET_SUCCESS.value:
+                    raise Exception("Pupilio release failed, please contact the developer!")
+
                 self.set_camera_mode(CameraMode.CAMERA_MODE_SYNC_200)
 
-            if self._et_native_lib.pupil_io_init() != ET_ReturnCode.ET_SUCCESS.value:
-                raise Exception("Pupilio re-init failed, please contact the developer!")
-            print(f'\nChanged sample rate to 200 Hz and re-inited the tracker')
+                if self._et_native_lib.pupil_io_init() != ET_ReturnCode.ET_SUCCESS.value:
+                    raise Exception("Pupilio re-init failed, please contact the developer!")
+                print(f'\nChanged sample rate to 200 Hz and re-inited the tracker')
 
             self._camera_mode, self.left_roi, self.right_roi = self.get_camera_mode()
 
