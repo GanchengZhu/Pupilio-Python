@@ -59,14 +59,14 @@ config.face_previewing = 1
 
 # Heuristic filter, recommended look_ahead = 2 (i.e., a noisy spike is determined by
 # 4 flanking samples)
-config.look_ahead = 1
+config.look_ahead = 4
 
 # Set the sampling rate (for models that support 400/800/1000 Hz),
 # on the 200 Hz model, sampling rate will fall back to 200 Hz
 config.sampling_rate = 400
 
 # Set the calibration mode (2-point, 4-point, 5-point)
-config.cali_mode = 2
+config.cali_mode = 4
 # alternatively, use the constants defined in .misc
 # config.cali_mode = CalibrationMode.FOUR_POINTS
 
@@ -129,8 +129,7 @@ for _img in images:
         # update the gaze position when got valid gaze position (not inf, not nan)
         # only update if we have a valid sample (status=1) and the values are finite
         if (status == 1 and
-                math.isfinite(gx_new) and math.isfinite(gy_new) and
-                0 <= gx_new <= scn_width and 0 <= gy_new <= scn_height):
+                math.isfinite(gx_new) and math.isfinite(gy_new)):
             gx = int(gx_new)
             gy = int(gy_new)
             has_valid_gaze = True

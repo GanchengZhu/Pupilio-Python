@@ -260,9 +260,6 @@ class Pupilio:
 
             self._camera_mode, self.left_roi, self.right_roi = self.get_camera_mode()
 
-            print(self._camera_mode, self.left_roi, self.right_roi )
-
-
         self.LEFT_IMG_WIDTH: int = int(self.left_roi[2])
         self.LEFT_IMG_HEIGHT: int = int(self.left_roi[3])
 
