@@ -7,6 +7,13 @@ token
 build.md
 docs/build
 pupilio/__pycache__
+__pycache__
+.pytest_cache
+example/picture_viewing/calibration
+example/picture_viewing/data
+example/picture_viewing/log_et
+example/event_detection/output
+example/event_detection/output_test
 example/data
 example/picture_free_viewing/data
 example/picture_free_viewing/log_et

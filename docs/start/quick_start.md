@@ -36,11 +36,6 @@ Now that we have created a standard full-screen Pygame window, the next step is 
 ```Python
 # load Pupilio library
 from pupilio import Pupilio
-from psychopy import visual, core, event
-
-# use the Psychopy library for graphics, first open a full screen window
-scn_width, scn_height = (1920, 1080)
-win = visual.Window((scn_width, scn_height), fullscr=True, units='pix')
 
 # instantiate a connection to the tracker
 pupil_io = Pupilio()
@@ -64,7 +59,7 @@ Next, with the calibration and validation code already implemented, we can begin
 pupil_io.start_sampling()
 ```
 
-Assuming we have collected data for 20 seconds, we can save the collected data to a file using the following code:
+Once we have collected enough data, we can stop sampling and save it to a file:
 
 ```Python
 

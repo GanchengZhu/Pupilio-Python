@@ -32,10 +32,56 @@
 # Author: GC Zhu
 # Email: zhugc2016@gmail.com
 
-from .core import Pupilio
-from .default_config import DefaultConfig
-from .event_detection import EventDetection
-from .misc import EventType, ET_ReturnCode, CalibrationMode
-from .version import __version__
+# _*_ coding: utf-8 _*_
+# Author: GC Zhu
+# Email: zhugc2016@gmail.com
 
-print(f"Pupilio version: {__version__}.")
+# _*_ coding: utf-8 _*_
+# Author: GC Zhu
+# Email: zhugc2016@gmail.com
+
+import logging
+import importlib
+
+__all__ = [
+    'Pupilio',
+    'DefaultConfig',
+    'EventDetection',
+    'EventType',
+    'ET_ReturnCode',
+    'CalibrationMode',
+    'ActiveEye',
+    'CameraMode',
+    '__version__'
+]
+
+# 配置日志记录器
+logging.getLogger(__name__).addHandler(logging.NullHandler())
+
+# 建立 属性/类名 -> 对应子模块 的映射表
+_MODULE_MAP = {
+    'Pupilio': '.core',
+    'DefaultConfig': '.default_config',
+    'EventDetection': '.event_detection',
+    'EventType': '.misc',
+    'ET_ReturnCode': '.misc',
+    'CalibrationMode': '.misc',
+    'ActiveEye': '.misc',
+    'CameraMode': '.misc',
+    '__version__': '.version'
+}
+
+
+def __getattr__(name):
+    # 如果请求的名称在映射表中，则动态导入对应模块
+    if name in _MODULE_MAP:
+        module_name = _MODULE_MAP[name]
+        module = importlib.import_module(module_name, __package__)
+        return getattr(module, name)
+
+    # 如果请求的名称不存在，抛出标准 AttributeError
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
+
+def __dir__():
+    return __all__

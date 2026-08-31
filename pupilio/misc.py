@@ -32,15 +32,14 @@
 # Author: GC Zhu
 # Email: zhugc2016@gmail.com
 
-import copy
 import logging
 import math
-import threading  # Importing the threading module for creating locks
-from collections import deque
 from enum import Enum, unique
 from enum import IntEnum
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 @unique
@@ -67,14 +66,20 @@ class EventType(StrEnum):
 
 
 class ET_ReturnCode(IntEnum):
-    """Enum representing return codes from the eye tracker"""
+    """
+    Status codes returned by the native eye tracker library.
+
+    Mirrors ``PupilioReturn`` in ``pupil_io_et.h``; the numeric values are an ABI contract
+    with the DLL and must not be renumbered.
+    """
     ET_SUCCESS = 0  # Successful, can proceed to the next scenario
     ET_CALI_CONTINUE = 1  # Calibration ongoing, continue with current calibration point
     ET_CALI_NEXT_POINT = 2  # Calibration ongoing, switch to next calibration point
-    ET_INVALID_PATH = 3
-    ET_INVALID_PARAM = 4
+    ET_INVALID_PATH = 3  # A supplied file or directory path is invalid
+    ET_INVALID_PARAM = 4  # A supplied argument is out of range or malformed
+    ET_ALREADY_SET = 8  # The requested value was already applied; not an error
     ET_FAILED = 9  # Operation failed
-    ET_EXCEPTION = 10
+    ET_EXCEPTION = 10  # An exception was raised inside the native library
 
 
 class CalibrationMode(IntEnum):
@@ -97,46 +102,6 @@ class ActiveEye(IntEnum):
     LEFT_EYE = -1
     RIGHT_EYE = 1
     BINO_EYE = 0
-
-
-class TriggerHandler:
-    def __init__(self):
-        """
-        Initializes the MarkerHandle class.
-        - self.trigger: Holds the current trigger value (initially None). The trigger value is less
-            than 256 and larger than 0. 0 is default value and user can set the trigger as 0.
-        - self.triggerUpdated: Flag to indicate if the trigger has been updated (initially False).
-        - self.lock: A lock object for ensuring thread safety.
-        """
-        self.trigger: int = 0
-        self.triggerUpdated = False
-        self.lock = threading.Lock()  # Create a lock object for thread safety
-
-    def set(self, trigger: int):
-        """
-        Method to set the marker value.
-        :param trigger: The new marker value to be set.
-        """
-        with self.lock:  # Acquire the lock to ensure thread safety
-            logging.info("send trigger to eye tracker with the value {}".format(trigger))
-            self.trigger = trigger  # Update the marker with the provided value
-            if self.triggerUpdated:
-                logging.warning("trigger already exists, don't send trigger frequently")
-            else:
-                self.triggerUpdated = True  # Set the flag to indicate that the marker has been updated
-
-    def get(self):
-        """
-        Method to get the current marker value.
-        :return: The current marker value or -1 if the marker is not updated.
-        """
-        with self.lock:  # Acquire the lock to ensure thread safety
-            if self.triggerUpdated:  # Check if the marker has been updated
-                self.triggerUpdated = False  # Reset the flag after reading the marker value
-                logging.info("retrieve trigger with the value {}".format(self.trigger))
-                return self.trigger  # Return the current marker value
-            else:
-                return 0  # Return 0 if the marker is not updated since the last read
 
 
 class LocalConfig:
@@ -181,12 +146,19 @@ class Calculator:
 
     def error(self, gt_pixel, es_pixel, distance):
         """
-        Calculate the error between ground truth pixel and estimated pixel.
+        Measure gaze error as a visual angle.
 
-        :param gt_pixel: Ground truth pixel value.
-        :param es_pixel: Estimated pixel value.
-        :param distance: Distance between the pixels.
-        :return: Error value calculated based on the provided formula.
+        Converts both points to centimetres on the screen and expresses the distance between
+        them as the angle they subtend at the participant's eye, which is the standard way
+        to report eye-tracking accuracy independently of screen size and seating distance.
+
+        Args:
+            gt_pixel (Sequence[float]): Ground-truth target position ``(x, y)`` in pixels.
+            es_pixel (Sequence[float]): Estimated gaze position ``(x, y)`` in pixels.
+            distance (float): Viewing distance from eye to screen, in centimetres.
+
+        Returns:
+            float: Error in degrees of visual angle.
         """
 
         gt_pixel = self.px_2_cm(gt_pixel)
@@ -198,33 +170,40 @@ class Calculator:
         return visual_angle
 
     def px_2_cm(self, pixel_point):
+        """
+        Convert a screen position from pixels to centimetres.
+
+        Args:
+            pixel_point (Sequence[float]): Position ``(x, y)`` in pixels.
+
+        Returns:
+            list[float]: Position ``[x, y]`` in centimetres from the top-left corner.
+        """
         point = [0, 0]
         point[0] = pixel_point[0] * self.physical_screen_width / self.screen_width
         point[1] = pixel_point[1] * self.physical_screen_height / self.screen_height
         return point
 
-    """
-     if (null == errorList || errorList.size() < 5) {
-                continue;
-            } else {
-                for (int j = 0; j < errorList.size() - 4; j++) {
-                    float error = (errorList.get(j) + errorList.get(j + 1) + errorList.get(j + 2)
-                            + errorList.get(j + 3) + errorList.get(j + 4)) / 5;
-                    if (minError > error) {
-                        minError = error;
-                        Log.i(TAG, "update min error");
-                    }
-                }
-            }
-    """
-
     def calculate_error_by_sliding_window(self, gt_point, es_points, distances):
         """
-        Calculate the error between ground truth pixel and estimated pixel.
-        :param gt_point: Ground truth pixel value.
-        :param es_points: Points of estimated pixel value, array-like.
-        :param distances: Distance list between the pixels.
+        Find the best gaze accuracy achieved during a validation target's presentation.
 
+        Slides a 5-sample window across the recorded gaze positions and keeps the window
+        with the lowest mean error. Reporting the best window rather than the overall mean
+        keeps a blink or a glance away from the target at the start or end of the
+        presentation from dominating the reported accuracy.
+
+        Args:
+            gt_point (Sequence[float]): Target position ``(x, y)`` in pixels.
+            es_points (Sequence[Sequence[float]]): Recorded gaze positions in pixels.
+            distances (Sequence[float]): Viewing distance in centimetres for each sample,
+                parallel to ``es_points``.
+
+        Returns:
+            dict: With keys ``min_error`` (degrees of visual angle, ``inf`` when it cannot
+            be computed), ``min_error_es_point`` (the mean gaze position of the best
+            window), and ``gt_point`` (the target, echoed back). Fewer than five samples or
+            mismatched inputs yield the ``inf`` result rather than raising.
         """
 
         min_error = float("inf")
@@ -241,54 +220,8 @@ class Calculator:
             return {"min_error": min_error, "min_error_es_point": min_error_es_point, "gt_point": gt_point
                     }
         except Exception as e:
-            print(f"[Error] calculate_error_by_sliding_window: {e}")
+            logger.debug(f"calculate_error_by_sliding_window could not compute an error: {e}")
             return {"min_error": float("inf"), "min_error_es_point": (0, 0), "gt_point": gt_point}
-
-class Queue:
-    def __init__(self, cache_size=2):
-        self._cache_size = cache_size
-        self.items = deque(maxlen=cache_size)
-
-    def __getitem__(self, idx):
-        if isinstance(idx, slice):
-            new_queue = copy.deepcopy(self)
-            new_queue.items = list(new_queue.items)[idx]
-            return new_queue
-        else:
-            return self.items[idx]
-
-    def empty(self):
-        return len(self.items) == 0
-
-    def enqueue(self, item):
-        self.items.append(item)
-
-    def dequeue(self):
-        if not self.empty():
-            return self.items.popleft()
-        else:
-            raise IndexError("dequeue from empty queue")
-
-    def size(self):
-        return len(self.items)
-
-    def peek(self):
-        if not self.empty():
-            return self.items[0]
-        else:
-            raise IndexError("peek from empty queue")
-
-    def tail(self):
-        if not self.empty():
-            return self.items[-1]
-        else:
-            raise IndexError("peek from empty queue")
-
-    def full(self):
-        return len(self.items) == self._cache_size
-
-    def __str__(self):
-        return '[' + ', '.join(map(str, self.items)) + ']'
 
 
 if __name__ == '__main__':

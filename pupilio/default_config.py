@@ -202,6 +202,11 @@ class DefaultConfig:
             "Press \"R\" / click on the right mouse button to recalibrate."
         )  # Instruction for initiating recalibration (legend_recalibration)
 
+        # Shown when the tracker rejects a calibration, e.g. kappa angle verification failed
+        self.instruction_calibration_failed = (
+            "Calibration did not meet the accuracy requirement."
+        )
+
         # show preview? 0=no, 1=yes
         self.face_previewing = 1
 
@@ -237,11 +242,11 @@ class DefaultConfig:
         elif mode == 2:
             self._cali_mode = CalibrationMode.TWO_POINTS
         elif mode == 5:
-            self._cali_mode = CalibrationMode.FIVE_POINTS  # Assuming FIVE_POINTS exists in CalibrationMode+
+            self._cali_mode = CalibrationMode.FIVE_POINTS
         elif mode == 4:
-            self._cali_mode = CalibrationMode.FOUR_POINTS  # Assuming FIVE_POINTS exists in CalibrationMode
+            self._cali_mode = CalibrationMode.FOUR_POINTS
         else:
-            raise ValueError("Invalid calibration mode. Must be 2, 5, or a CalibrationMode instance.")
+            raise ValueError("Invalid calibration mode. Must be 2, 4, 5, or a CalibrationMode instance.")
 
         # Update instructions when mode changes
         self.instruction_language(self._lang)  # Re-generate instructions with new mode
@@ -334,11 +339,9 @@ class DefaultConfig:
         self.instruction_head_center = "请将头移动到方框中央"
 
         # Calibration entry instructions
-        self.instruction_enter_calibration = "屏幕上会出现两个点，请依次注视这些点\n" \
+        points = {2: "两", 4: "四", 5: "五"}.get(self.cali_mode, "几")
+        self.instruction_enter_calibration = f"屏幕上会出现{points}个点，请依次注视这些点\n" \
                                              "按回车键或鼠标左键(或触击屏幕)开始校准"
-        if self.cali_mode == 4:
-            self.instruction_enter_calibration = "屏幕上会出现四个点，请依次注视这些点\n" \
-                                                 "按回车键或鼠标左键(或触击屏幕)开始校准"
 
         self.instruction_hands_free_calibration = (
             "倒计时结束后屏幕上会出现几个点，请依次注视这些点"
@@ -360,19 +363,26 @@ class DefaultConfig:
         self.instruction_recalibration = (
             "按\"R\"键或鼠标右键(长按屏幕)重新校准"
         )
+        self.instruction_calibration_failed = (
+            "校准结果未达到精度要求。"
+        )
 
     def english(self):
+        """
+        Update all instructions and legends to English.
+
+        The calibration prompt names the number of targets, so it follows the current
+        ``cali_mode``.
+        """
         # Calibration preview instructions
         self.instruction_face_far = "Move farther back"
         self.instruction_face_near = "Move closer"
         self.instruction_head_center = "Move your head to the center of the box"
 
         # Calibration entry instructions
-        self.instruction_enter_calibration = "Two points will appear on screen, please look at them in sequence\n" \
+        points = {2: "Two", 4: "Four", 5: "Five"}.get(self.cali_mode, "Several")
+        self.instruction_enter_calibration = f"{points} points will appear on screen, please look at them in sequence\n" \
                                              "Press Enter or left-click the mouse (or touch the screen) to start calibration"
-        if self.cali_mode == 4:
-            self.instruction_enter_calibration = "Four points will appear on screen, please look at them in sequence\n" \
-                                                 "Press Enter or left-click the mouse (or touch the screen) to start calibration"
 
         self.instruction_hands_free_calibration = (
             "Following the countdown, several points will appear on screen, please look at them in sequence"
@@ -394,20 +404,26 @@ class DefaultConfig:
         self.instruction_recalibration = (
             "Press \"R\" or right-click (long press the screen) to recalibrate."
         )
+        self.instruction_calibration_failed = (
+            "Calibration did not meet the accuracy requirement."
+        )
 
     def french(self):
+        """
+        Update all instructions and legends to French.
+
+        The calibration prompt names the number of targets, so it follows the current
+        ``cali_mode``.
+        """
         # Calibration preview instructions
         self.instruction_face_far = "Veuillez vous éloigner"
         self.instruction_face_near = "Veuillez vous rapprocher"
         self.instruction_head_center = "Veuillez centrer votre tête dans l'image"
 
         # Calibration entry instructions
-        self.instruction_enter_calibration = "Deux points apparaîtront à l'écran, veuillez les regarder dans l'ordre\n" \
+        points = {2: "Deux", 4: "Quatre", 5: "Cinq"}.get(self.cali_mode, "Plusieurs")
+        self.instruction_enter_calibration = f"{points} points apparaîtront à l'écran, veuillez les regarder dans l'ordre\n" \
                                              "Appuyez sur Entrée ou cliquez à gauche (cliquez sur l'écran) pour commencer l'étalonnage"
-        if self.cali_mode == 4:
-            self.instruction_enter_calibration = "Quatre points apparaîtront à l'écran, veuillez les regarder dans l'ordre\n" \
-                                                 "Appuyez sur Entrée ou cliquez à gauche (cliquez sur l'écran) pour commencer l'étalonnage"
-
 
         self.instruction_hands_free_calibration = (
             "Après le compte à rebours, plusieurs points apparaîtront à l'écran, veuillez les regarder dans l'ordre."
@@ -429,25 +445,28 @@ class DefaultConfig:
         self.instruction_recalibration = (
             "Appuyez sur \"R\" ou cliquez à droite (maintenez l'écran) pour recalibrer."
         )
+        self.instruction_calibration_failed = (
+            "L'étalonnage n'a pas atteint la précision requise."
+        )
 
     def spanish(self):
+        """
+        Update all instructions and legends to Spanish.
+
+        The calibration prompt names the number of targets, so it follows the current
+        ``cali_mode``.
+        """
         # Calibration preview instructions
         self.instruction_face_far = "Por favor, retroceda"
         self.instruction_face_near = "Por favor, acérquese"
         self.instruction_head_center = "Por favor, centre su cabeza en la pantalla"
 
         # Calibration entry instructions
+        points = {2: "dos", 4: "cuatro", 5: "cinco"}.get(self.cali_mode, "varios")
         self.instruction_enter_calibration = \
-            ("Aparecerán dos puntos en la pantalla, por favor mírelos en orden\n"
+            (f"Aparecerán {points} puntos en la pantalla, por favor mírelos en orden\n"
              "Presione Enter o haga clic con el botón izquierdo "
              "(haga clic en la pantalla) para comenzar la calibración")
-
-        if self.cali_mode == 4:
-            self.instruction_enter_calibration = \
-                ("Aparecerán cuatro puntos en la pantalla, por favor mírelos en orden\n"
-                 "Presione Enter o haga clic con el botón izquierdo "
-                 "(haga clic en la pantalla) para comenzar la calibración")
-
 
         self.instruction_hands_free_calibration = (
             "Después de la cuenta regresiva, aparecerán varios puntos en la pantalla, por favor mírelos en orden."
@@ -469,19 +488,26 @@ class DefaultConfig:
         self.instruction_recalibration = (
             "Presione \"R\" o haga clic con el botón derecho \n(mantenga presionada la pantalla) para recalibrar."
         )
+        self.instruction_calibration_failed = (
+            "La calibración no alcanzó la precisión requerida."
+        )
 
     def traditional_chinese(self):
+        """
+        Update all instructions and legends to Traditional Chinese.
+
+        The calibration prompt names the number of targets, so it follows the current
+        ``cali_mode``.
+        """
         # Calibration preview instructions
         self.instruction_face_far = "請後移一些"
         self.instruction_face_near = "請靠近一些"
         self.instruction_head_center = "請將頭移到畫面中央"
 
         # Calibration entry instructions
-        self.instruction_enter_calibration = "畫面上會出現兩個點，請按順序注視這些點\n" \
+        points = {2: "兩", 4: "四", 5: "五"}.get(self.cali_mode, "幾")
+        self.instruction_enter_calibration = f"畫面上會出現{points}個點，請按順序注視這些點\n" \
                                              "按下回車鍵或鼠標左鍵(點擊螢幕)開始校準"
-        if self.cali_mode == 4:
-            self.instruction_enter_calibration = "畫面上會出現肆個點，請按順序注視這些點\n" \
-                                                 "按下回車鍵或鼠標左鍵(點擊螢幕)開始校準"
 
         self.instruction_hands_free_calibration = (
             "倒數計時後畫面會顯示幾個點，請按順序注視這些點。"
@@ -503,17 +529,26 @@ class DefaultConfig:
         self.instruction_recalibration = (
             "按下\"R\"鍵或鼠標右鍵(長按螢幕)重新校準。"
         )
+        self.instruction_calibration_failed = (
+            "校準結果未達到精度要求。"
+        )
 
     def japanese(self):
+        """
+        Update all instructions and legends to Japanese.
+
+        The calibration prompt names the number of targets, so it follows the current
+        ``cali_mode``.
+        """
         # Calibration preview instructions
         self.instruction_face_far = "もっと後ろに移動してください"
         self.instruction_face_near = "もっと近づいてください"
         self.instruction_head_center = "画面の中央に頭を移動してください"
 
         # Calibration entry instructions
-        self.instruction_enter_calibration = "画面に2つの点が表示されますので、その順番で注視してください\n Enterキーまたは左クリック（画面をクリック）でキャリブレーションを開始します"
-        if self.cali_mode == 4:
-            self.instruction_enter_calibration = "画面に4つの点が表示されますので、その順番で注視してください\n nterキーまたは左クリック（画面をクリック）でキャリブレーションを開始します"
+        points = {2: "2", 4: "4", 5: "5"}.get(self.cali_mode, "いくつか")
+        self.instruction_enter_calibration = f"画面に{points}つの点が表示されますので、その順番で注視してください\n" \
+                                             "Enterキーまたは左クリック（画面をクリック）でキャリブレーションを開始します"
         self.instruction_hands_free_calibration = (
             "カウントダウン後、画面にいくつかの点が表示されますので、その順番で注視してください。"
         )
@@ -534,17 +569,26 @@ class DefaultConfig:
         self.instruction_recalibration = (
             "「R」キーまたは右クリック（画面を長押し）で再キャリブレーションします。"
         )
+        self.instruction_calibration_failed = (
+            "キャリブレーションが精度要件を満たしませんでした。"
+        )
 
     def korean(self):
+        """
+        Update all instructions and legends to Korean.
+
+        The calibration prompt names the number of targets, so it follows the current
+        ``cali_mode``.
+        """
         # Calibration preview instructions
         self.instruction_face_far = "조금 더 뒤로 가주세요"
         self.instruction_face_near = "조금 더 가까이 가세요"
         self.instruction_head_center = "화면 중앙에 머리를 위치시켜 주세요"
 
         # Calibration entry instructions
-        self.instruction_enter_calibration = "화면에 두 개의 점이 나타나면 순서대로 주시하세요\n Enter 키 또는 왼쪽 클릭(화면 클릭)으로 교정 시작"
-        if self.cali_mode == 4:
-            self.instruction_enter_calibration = "화면에 네 개의 점이 나타나면 순서대로 주시하세요\n Enter 키 또는 왼쪽 클릭(화면 클릭)으로 교정 시작"
+        points = {2: "두", 4: "네", 5: "다섯"}.get(self.cali_mode, "여러")
+        self.instruction_enter_calibration = f"화면에 {points} 개의 점이 나타나면 순서대로 주시하세요\n" \
+                                             "Enter 키 또는 왼쪽 클릭(화면 클릭)으로 교정 시작"
 
         self.instruction_hands_free_calibration = (
             "카운트다운 후 화면에 여러 점이 나타납니다. 순서대로 주시해주세요."
@@ -565,4 +609,7 @@ class DefaultConfig:
         )
         self.instruction_recalibration = (
             "「R」 키 또는 오른쪽 클릭(화면 길게 누르기)으로 재교정합니다."
+        )
+        self.instruction_calibration_failed = (
+            "보정 결과가 정확도 요건을 충족하지 못했습니다."
         )

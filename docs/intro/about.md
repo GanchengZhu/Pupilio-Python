@@ -1,6 +1,6 @@
 # Introduction of Pupilio
 
-Pupilio is a lightweight package developed by Hangzhou Technology Technology Co., Ltd. It is designed to drive and control the Pupil.IO Eye Tracker, offering a straightforward and user-friendly interface for ease of use. This tool allows for the control of eye-tracking data recording, calibration, and validation. Its calibration and validation UI can be seamlessly integrated with PsychoPy, PyGame, and other platforms.
+Pupilio is a lightweight package developed by Hangzhou DeepGaze Science and Technology Co., Ltd. It is designed to drive and control the Pupil.IO Eye Tracker, offering a straightforward and user-friendly interface for ease of use. This tool allows for the control of eye-tracking data recording, calibration, and validation. Its calibration and validation UI can be seamlessly integrated with PsychoPy, PyGame, and other platforms.
 
 
 ## What's Pupil.IO
@@ -16,7 +16,7 @@ Pupilio is a lightweight package developed by Hangzhou Technology Technology Co.
 
 | Attribute                | Specification                                 |
 |--------------------------|-----------------------------------------------|
-| Sample Rate              | 200 Hz                                        |
+| Sample Rate              | 200 Hz / 400 Hz (device dependent)            |
 | Accuracy                 | 0.5-1°                                        |
 | Precision                | 0.03°                                         |
 | Blink/Occlusion Recovery | 5 ms @ 200 Hz                                 |

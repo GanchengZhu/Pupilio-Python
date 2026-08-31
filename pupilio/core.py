@@ -52,6 +52,7 @@ from .misc import ET_ReturnCode, CalibrationMode, CameraMode
 # Author: GC Zhu
 # Email: zhugc2016@gmail.com
 
+logger = logging.getLogger(__name__)
 
 class Pupilio:
     """Class for interacting with the eye tracker dynamic link library (DLL).
@@ -59,26 +60,42 @@ class Pupilio:
 
     def __init__(self, config=None):
         """
-        Initialize the Pupilio class.
-        Load the appropriate DLL based on the platform (Windows or other).
-        Set return types and argument types for DLL functions.
-        Initialize various attributes and start the sampling thread.
-        """
+        Load the native library and bring the eye tracker up to a ready state.
 
-        """
-        usage 1:
-        config = DefaultConfig()
-        config.look_ahead = 2
-        pi = Pupilio(config=config)
+        Loads ``PupilioET.dll`` (or ``DummyPupilioET.dll`` when ``config.simulation_mode``
+        is set), binds every native entry point through ctypes, applies the eye mode,
+        look-ahead, kappa filter, logging, and calibration mode from ``config``, then
+        initialises the tracker. If a 400 Hz-capable camera is asked to run at 200 Hz, the
+        tracker is released, switched to ``CAMERA_MODE_SYNC_200``, and re-initialised, since
+        the camera cannot be reconfigured while open.
 
-        usage 2:
-        pi = Pupilio()
+        Args:
+            config (DefaultConfig, optional): Settings to apply. A default instance is
+                created when omitted.
+
+        Raises:
+            ValueError: If ``config.look_ahead`` is not an integer in ``(0, 4]``.
+            RuntimeError: If the native tracker fails to initialise.
+
+        Example:
+            config = DefaultConfig()
+            config.look_ahead = 2
+            pi = Pupilio(config=config)
+
+            # or simply accept the defaults
+            pi = Pupilio()
         """
 
         if config is None:
             self.config = DefaultConfig()
         else:
             self.config = config
+
+        # --- 整合 Logging ---
+        if self.config.enable_debug_logging:
+            logger.setLevel(logging.DEBUG)
+        else:
+            logger.setLevel(logging.WARNING)
 
         # Determine the platform and load the appropriate DLL
         if platform.system().lower() == 'windows':
@@ -156,7 +173,8 @@ class Pupilio:
             np.ctypeslib.ndpointer(dtype=np.float32, ndim=1, flags='C_CONTIGUOUS')
         ]
         self._et_native_lib.pupil_io_previewer_init.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.c_bool]
-        self._et_native_lib.pupil_io_send_trigger.argtypes = [ctypes.c_int]
+        self._et_native_lib.pupil_io_send_trigger.argtypes = [ctypes.c_uint64]
+        self._et_native_lib.pupil_io_set_filter_enable.argtypes = [ctypes.c_bool]
         self._et_native_lib.pupil_io_save_data_to.argtypes = [ctypes.c_char_p]
         self._et_native_lib.pupil_io_create_session.argtypes = [ctypes.c_char_p]
 
@@ -225,7 +243,8 @@ class Pupilio:
 
         # Initialize tracker, raise an exception if initialization fails
         if self._et_native_lib.pupil_io_init() != ET_ReturnCode.ET_SUCCESS.value:
-            raise Exception("Pupilio init failed, please contact the developer!")
+            logger.error("Pupilio init failed.")
+            raise RuntimeError("Pupilio init failed, please contact the developer!")
 
         # we need to call set_camera_mode() before tracker initialization
         self._camera_mode, self.left_roi, self.right_roi = self.get_camera_mode()
@@ -237,12 +256,17 @@ class Pupilio:
         else:
             supported_sr = [200]
 
-        # give a warning and raise an exception if user put in an un-supported sampling rate
+        # give a warning and automatically downgrade if user put in an un-supported sampling rate
         if not self.config.sampling_rate:
             self.config.sampling_rate = supported_sr[-1]
         else:
             if self.config.sampling_rate not in supported_sr:
-                raise Exception("Do not support this sampling rate: %s" % self.config.sampling_rate)
+                fallback_rate = supported_sr[-1]
+                logger.warning(
+                    f"The requested sampling rate {self.config.sampling_rate} Hz is not supported. "
+                    f"Automatically degrading to {fallback_rate} Hz."
+                )
+                self.config.sampling_rate = fallback_rate
 
         # if we have a sync_400 camera and want to run at 200 hz, we need to
         # release, set_camera_mode, then init the tracker again
@@ -281,51 +305,40 @@ class Pupilio:
 
     def query_support_samping_rate(self):
         """
-        Query the list of supported sampling (frame) rates for the current camera mode.
+        Query the sampling (frame) rates supported by the currently active camera mode.
 
-        This method retrieves the active camera mode via `get_camera_mode()` and returns
-        a list of available sampling rates (in Hz) that are supported under that mode.
-        The supported rates vary depending on the hardware capabilities and the current
-        configuration.
+        The active mode is read back from the device with :meth:`get_camera_mode`, so this
+        reflects what the hardware is actually running rather than what was requested.
 
         Returns:
-            list[int]: A list of integer sampling rates (e.g., [200, 400, 800]) supported
-                       by the current camera mode. The list is determined as follows
-                       based on the `mode` value obtained from `get_camera_mode()`:
+            list[int]: Supported sampling rates in Hz, ascending, per camera mode:
 
-                       - mode == 1  : supports [200, 400, 800]   (max 800)
-                       - mode == 2  : supports [200, 400, 800, 1000] (max 1000)
-                       - mode == 3  : supports [200]             (max 200)
-                       - mode == 0 or 4 : supports [200, 400]    (max 400)
+                - ``CAMERA_MODE_SYNC_400`` (0): ``[200, 400]``
+                - ``CAMERA_MODE_SYNC_800`` (1): ``[200, 400, 800]``
+                - ``CAMERA_MODE_SYNC_1000`` (2): ``[200, 400, 800, 1000]``
+                - ``CAMERA_MODE_SYNC_200`` (3): ``[200]``
+                - ``CAMERA_MODE_ASYNC_400`` (4): ``[200, 400]``
 
-        Note:
-            The current implementation treats `mode == 4` and `mode == 0` identically.
-            However, the line `elif mode == 4 or mode[0] == 0:` appears to contain an
-            error – `mode` is an integer, so `mode[0]` will raise a `TypeError`. The
-            intended condition is likely `mode == 4 or mode == 0`. The docstring
-            reflects the logical intent as written in the code.
+                An unrecognised mode falls back to ``[200]``, the rate every device supports.
 
         Raises:
-            Exception: Propagated from `get_camera_mode()` if the underlying C call fails.
+            RuntimeError: Propagated from :meth:`get_camera_mode` if the native call fails.
 
         See Also:
-            get_camera_mode : Retrieves the current camera mode and ROI geometries.
+            get_camera_mode: Retrieves the current camera mode and ROI geometry.
         """
-        mode, left_roi, right_roi = self.get_camera_mode()
+        mode, _left_roi, _right_roi = self.get_camera_mode()
 
-        max_sampling_rate = 200
-        if mode == 1:
-            max_sampling_rate = 800
+        if mode == CameraMode.CAMERA_MODE_SYNC_800:
             return [200, 400, 800]
-        elif mode == 2:
-            max_sampling_rate = 1000
+        elif mode == CameraMode.CAMERA_MODE_SYNC_1000:
             return [200, 400, 800, 1000]
-        elif mode == 3:
-            max_sampling_rate = 200
+        elif mode == CameraMode.CAMERA_MODE_SYNC_200:
             return [200]
-        elif mode == 4 or mode[0] == 0:  # BUG: mode is int, mode[0] is invalid
-            max_sampling_rate = 400
+        elif mode in (CameraMode.CAMERA_MODE_SYNC_400, CameraMode.CAMERA_MODE_ASYNC_400):
             return [200, 400]
+        logger.warning(f"Unknown camera mode {mode}; assuming 200 Hz only.")
+        return [200]
 
     def set_camera_mode(self, mode_value):
         """
@@ -354,8 +367,9 @@ class Pupilio:
         """
         mode = ctypes.c_int(mode_value)
         ret = self._et_native_lib.pupil_io_set_camera_mode(ctypes.byref(mode))
-        if ret != ET_ReturnCode.ET_SUCCESS:
-            raise Exception(f"pupil_io_set_camera_mode failed with code {ret}")
+        if ret != ET_ReturnCode.ET_SUCCESS.value:
+            logger.error(f"pupil_io_set_camera_mode failed with code {ret}")
+            raise RuntimeError(f"pupil_io_set_camera_mode failed with code {ret}")
 
     def get_camera_mode(self):
         """
@@ -403,19 +417,24 @@ class Pupilio:
             right_roi.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
         )
         if ret != ET_ReturnCode.ET_SUCCESS:
-            raise Exception(f"pupil_io_set_camera_mode failed with code {ret}")
+            raise RuntimeError(f"pupil_io_get_camera_mode failed with code {ret}")
         return mode[0], left_roi, right_roi
 
     def previewer_start(self, udp_host: str, udp_port: int, draw_preview_annotations: bool = True):
         """
-        Initialize and start the previewer.
+        Start streaming the camera preview over UDP.
 
-        :param udp_host: The UDP host address for receiving the video stream.
-        :param udp_port: The UDP port number for receiving the video stream.
-        :param draw_preview_annotations: Whether to eye boxes, glints, and eye pupils.
+        Initialises the previewer and then starts it, so the images can be consumed by a
+        remote viewer rather than drawn locally.
 
-        This method first calls pupil_io_previewer_init to initialize the previewer,
-        and then calls pupil_io_previewer_start to start the preview.
+        Args:
+            udp_host (str): Destination IP address for the video stream.
+            udp_port (int): Destination UDP port.
+            draw_preview_annotations (bool): Whether the stream includes the eye boxes,
+                glints, and pupil markers. Defaults to True.
+
+        Raises:
+            Exception: If ``udp_host`` is not a valid IP address.
         """
         try:
             ipaddress.ip_address(udp_host)
@@ -426,10 +445,10 @@ class Pupilio:
 
     def previewer_stop(self):
         """
-        Stop the previewer.
+        Stop the UDP preview stream started by :meth:`previewer_start`.
 
-        This method calls pupil_io_previewer_stop to cease receiving and processing
-        the video stream.
+        Returns:
+            None
         """
         self._et_native_lib.pupil_io_previewer_stop()
 
@@ -445,7 +464,12 @@ class Pupilio:
             or underscores without any special characters.
 
         Returns:
-            int: ET_ReturnCode indicating the success or failure of session creation.
+            int: An :class:`ET_ReturnCode` value; ``ET_SUCCESS`` on success.
+
+        Raises:
+            Exception: If ``session_name`` contains characters outside letters, digits,
+                underscores, hyphens, plus signs, and parentheses, or matches a Windows
+                reserved device name such as ``CON`` or ``COM1``.
 
         Notes:
             1. The temporary folder is located at `/Pupilio/{session_name}_{time}` in the user's home directory.
@@ -476,13 +500,18 @@ class Pupilio:
 
     def save_data(self, path: str) -> int:
         """
-        Save sampled data to a file.
+        Write the recorded samples to a CSV file.
 
         Args:
-            path (str): The path to save the data file.
+            path (str): Destination file path. Its parent directory must already exist and
+                be writable.
 
         Returns:
-            int: Return code indicating success or failure.
+            int: ``ET_ReturnCode.ET_SUCCESS`` on success.
+
+        Raises:
+            Exception: If the parent directory is missing or not writable, or if the native
+                library fails to write the file.
         """
         # Check if the directory exists and is writable
         directory = os.path.dirname(path)
@@ -501,24 +530,31 @@ class Pupilio:
 
     def start_sampling(self) -> int:
         """
-        Start eye gaze sampling.
+        Begin recording gaze samples into the native buffer.
 
         Returns:
-            int: Return code indicating success or failure.
+            int: An :class:`ET_ReturnCode` value; ``ET_SUCCESS`` on success.
+
+        Raises:
+            RuntimeError: If sampling is already running, or the tracker refuses to start.
         """
-        # Lock to ensure thread safety while modifying sampling status
+        if self.get_sampling_status():
+            logger.error("Sampling is already running.")
+            raise RuntimeError("Sampling is already running; call `stop_sampling` first.")
+
         res = self._et_native_lib.pupil_io_start_sampling()
         time.sleep(0.05)
-        if res == ET_ReturnCode.ET_FAILED:
-            raise Exception("You have called `start_sampling` function or something went wrong.")
+        if res == ET_ReturnCode.ET_FAILED.value:
+            logger.error("Failed to start sampling.")
+            raise RuntimeError("You have called `start_sampling` function or something went wrong.")
         return res
 
     def get_sampling_status(self) -> bool:
         """
-        Check the status of sampling from the pupil IO.
+        Report whether the tracker is currently recording samples.
 
         Returns:
-        bool: True if sampling is active, False otherwise.
+            bool: True while a sampling session is running, False otherwise.
         """
         # Create a c_bool variable to hold the status
         status = ctypes.c_bool()
@@ -534,25 +570,40 @@ class Pupilio:
 
     def stop_sampling(self) -> int:
         """
-        Stop eye gaze sampling.
+        Stop recording gaze samples.
+
+        Buffered data is retained, so :meth:`save_data` can still be called afterwards.
 
         Returns:
-            int: Return code indicating success or failure.
+            int: An :class:`ET_ReturnCode` value; ``ET_SUCCESS`` on success.
+
+        Raises:
+            RuntimeError: If no sampling session is currently running.
         """
+        # The native library dereferences its sampling thread without a null check,
+        # so calling it while idle takes down the whole process. Refuse early instead.
+        if not self.get_sampling_status():
+            logger.error("No sampling thread is currently running.")
+            raise RuntimeError("There is no sampling running.")
+
         res = self._et_native_lib.pupil_io_stop_sampling()
         time.sleep(0.1)
-        if res == ET_ReturnCode.ET_FAILED:
-            raise Exception("There is no sampling running.")
+        if res == ET_ReturnCode.ET_FAILED.value:
+            logger.error("Failed to stop sampling.")
+            raise RuntimeError("There is no sampling running.")
         return res
 
     def face_position(self) -> Tuple[int, np.ndarray]:
         """
-        Get the current face position.
+        Get the participant's eye position in tracker space.
+
+        Used to guide head positioning before calibration.
 
         Returns:
-            tuple: A tuple containing the result code and numpy array of face position coordinates.
-                   - If sampling is ongoing, returns ET_FAILED and an empty list.
-                   - If successful, returns ET_SUCCESS and the face position coordinates.
+            tuple[int, np.ndarray]: An :class:`ET_ReturnCode` and a 3-element float32 array
+            ``(x, y, z)`` in millimetres. Screen centre is ``(172.08, 96.795)``; a typical
+            seated participant sits near ``z = -580``. The array is reused between calls, so
+            copy it if you need to retain the values.
         """
         # Create a ctypes array to store face position
         # Call DLL function to get face position
@@ -561,14 +612,20 @@ class Pupilio:
         return ret, self._face_pos
 
     def calibration(self, cali_point_id: int) -> int:
-        """Perform calibration
+        """
+        Feed one frame of calibration data for the given target.
+
+        Call this repeatedly while the target at ``cali_point_id`` is displayed; the return
+        code says whether to keep collecting, advance to the next target, or stop.
+        Calibration cannot run while sampling is active.
 
         Args:
-            cali_point_id (int): ID of the calibration point, 0 for the first calibration point,
-                                 1 for the second, and so on.
+            cali_point_id (int): Zero-based index of the calibration target being shown.
 
         Returns:
-            int: Result of the calibration, can be checked against ET_ReturnCode enum.
+            int: ``ET_CALI_CONTINUE`` to keep showing this target, ``ET_CALI_NEXT_POINT`` to
+            advance, ``ET_SUCCESS`` when calibration is complete, or ``ET_FAILED`` if
+            sampling is running.
         """
         if self.get_sampling_status():
             return ET_ReturnCode.ET_FAILED
@@ -584,7 +641,7 @@ class Pupilio:
             eye position data, timestamp, and trigger.
         """
         timestamp = ctypes.c_longlong()
-        status = self._et_native_lib.pupil_io_gaze_est(self._pt.ctypes, ctypes.byref(timestamp))
+        status = self._et_native_lib.pupil_io_est(self._pt, ctypes.byref(timestamp))
         trigger = 0
         return status, self._pt, timestamp.value, trigger
 
@@ -604,7 +661,7 @@ class Pupilio:
                 - int: Status code, where `ET_ReturnCode.ET_SUCCESS` indicates success.
                 - np.ndarray: Estimated gaze point for the left eye. Contains 14 elements.
                     left_eye_sample[0]:left eye gaze position x (0~1920)
-                    left_eye_sample[1]:left eye gaze position y (0~1920)
+                    left_eye_sample[1]:left eye gaze position y (0~1080)
                     left_eye_sample[2]:left eye pupil diameter (0~10) (mm)
                     left_eye_sample[3]:left eye pupil position x
                     left_eye_sample[4]:left eye pupil position y
@@ -619,7 +676,7 @@ class Pupilio:
                     left_eye_sample[13]:left eye valid (0:invalid 1:valid)
                 - np.ndarray: Estimated gaze point for the right eye. Contains 14 elements.
                     right_eye_sample[0]:right eye gaze position x (0~1920)
-                    right_eye_sample[1]:right eye gaze position y (0~1920)
+                    right_eye_sample[1]:right eye gaze position y (0~1080)
                     right_eye_sample[2]:right eye pupil diameter (0~10) (mm)
                     right_eye_sample[3]:right eye pupil position x
                     right_eye_sample[4]:right eye pupil position y
@@ -634,10 +691,15 @@ class Pupilio:
                     right_eye_sample[13]:right eye valid (0:invalid 1:valid)
                 - int: Timestamp of the estimation (in milliseconds).
                 - int: Trigger value, initialized to 0.
+
         Example:
-            status, left_eye_sample, right_eye_sample, bino_eye_sample, timestamp, trigger = instance.estimation_lr()
+            status, left_eye_sample, right_eye_sample, timestamp, trigger = instance.estimation_lr()
             if status == ET_ReturnCode.ET_SUCCESS:
                 print("Gaze estimation successful.")
+
+        Note:
+            The returned arrays are reused between calls; copy them if you need to retain
+            the values.
         """
         timestamp = ctypes.c_longlong()
         status = self._et_native_lib.pupil_io_est_lr(self._pt_l, self._pt_r, ctypes.byref(timestamp))
@@ -659,7 +721,7 @@ class Pupilio:
                 - int: Status code, where `ET_ReturnCode.ET_SUCCESS` indicates success.
                 - np.ndarray: Estimated gaze point for the left eye. Contains 14 elements.
                     left_eye_sample[0]:left eye gaze position x (0~1920)
-                    left_eye_sample[1]:left eye gaze position y (0~1920)
+                    left_eye_sample[1]:left eye gaze position y (0~1080)
                     left_eye_sample[2]:left eye pupil diameter (0~10) (mm)
                     left_eye_sample[3]:left eye pupil position x
                     left_eye_sample[4]:left eye pupil position y
@@ -674,7 +736,7 @@ class Pupilio:
                     left_eye_sample[13]:left eye valid (0:invalid 1:valid)
                 - np.ndarray: Estimated gaze point for the right eye. Contains 14 elements.
                     right_eye_sample[0]:right eye gaze position x (0~1920)
-                    right_eye_sample[1]:right eye gaze position y (0~1920)
+                    right_eye_sample[1]:right eye gaze position y (0~1080)
                     right_eye_sample[2]:right eye pupil diameter (0~10) (mm)
                     right_eye_sample[3]:right eye pupil position x
                     right_eye_sample[4]:right eye pupil position y
@@ -687,23 +749,22 @@ class Pupilio:
                     right_eye_sample[11]:right eye pix per degree x
                     right_eye_sample[12]:right eye pix per degree y
                     right_eye_sample[13]:right eye valid (0:invalid 1:valid)
-                 - np.ndarray: Estimated gaze point for the bino eye. Contains 9 elements.
+                 - np.ndarray: Fused binocular gaze point. Contains 10 elements.
                     bino_eye_sample[0]: bino eye gaze position x (0~1920)
-                    bino_eye_sample[1]: bino eye gaze position y (0~1920)
-                    bino_eye_sample[2]: nil
-                    bino_eye_sample[3]: nil
-                    bino_eye_sample[4]: nil
-                    bino_eye_sample[5]: nil
-                    bino_eye_sample[6]: nil
-                    bino_eye_sample[7]: nil
-                    bino_eye_sample[8]: nil
-                    bino_eye_sample[9]: nil
+                    bino_eye_sample[1]: bino eye gaze position y (0~1080)
+                    bino_eye_sample[2]: bino eye valid (0:invalid 1:valid)
+                    bino_eye_sample[3:10]: reserved
                 - int: Timestamp of the estimation (in milliseconds).
                 - int: Trigger value, initialized to 0.
+
         Example:
-            status, left_eye_sample, right_eye_sample, bino_eye_sample, timestamp, trigger = instance.estimation_lr()
+            status, left_eye_sample, right_eye_sample, bino_eye_sample, timestamp, trigger = instance.estimate_gaze()
             if status == ET_ReturnCode.ET_SUCCESS:
                 print("Gaze estimation successful.")
+
+        Note:
+            The returned arrays are reused between calls; copy them if you need to retain
+            the values.
         """
         timestamp = ctypes.c_longlong()
         status = self._et_native_lib.pupil_io_estimate_gaze(self._pt_l, self._pt_r, self._pt_bino,
@@ -713,10 +774,13 @@ class Pupilio:
 
     def release(self) -> int:
         """
-        Release the resources used by the eye tracker.
+        Shut down the tracker and free the resources held by the native library.
+
+        Call this once at the end of an experiment. The instance must not be used
+        afterwards.
 
         Returns:
-            int: ET_ReturnCode.ET_SUCCESS if successful.
+            int: An :class:`ET_ReturnCode` value; ``ET_SUCCESS`` on success.
         """
         # logging.info("release deep gaze")
         return_code = self._et_native_lib.pupil_io_release()
@@ -735,10 +799,22 @@ class Pupilio:
 
     def set_trigger(self, trigger: int) -> int:
         """
-        Set the trigger.
+        Mark the current sample with a trigger code.
+
+        Use this to align eye-tracking data with experiment events; the code is written
+        into the recorded data alongside the sample it lands on.
 
         Args:
-            trigger: The trigger to set. Range: 1 - 65535
+            trigger (int): Trigger code to record, between 1 and 65535.
+
+        Returns:
+            int: ``ET_ReturnCode.ET_SUCCESS`` on success.
+
+        Raises:
+            TypeError: If ``trigger`` is not an integer.
+            ValueError: If ``trigger`` is outside 1-65535.
+            Exception: If the native call rejects the trigger, which happens when triggers
+                are sent faster than the tracker can consume them.
         """
         if not isinstance(trigger, int):
             raise TypeError("Trigger must be an integer.")
@@ -753,16 +829,22 @@ class Pupilio:
 
     def set_filter_enable(self, status: bool) -> int:
         """
-        Enable or disable the filter.
+        Enable or disable the gaze smoothing filter.
 
         Args:
-            status (bool): True to enable the filter, False to disable.
+            status (bool): True to enable filtering, False for raw estimates.
+
+        Returns:
+            int: An :class:`ET_ReturnCode` value; ``ET_SUCCESS`` on success.
         """
         return self._et_native_lib.pupil_io_set_filter_enable(status)
 
     def get_current_gaze(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Retrieve the current gaze values for the left eye, right eye, and binocular gaze.
+        Retrieve the most recent gaze position for each eye and the fused binocular gaze.
+
+        This is the lightweight read for gaze-contingent displays: it returns the latest
+        cached values without triggering a new estimation.
 
         Example:
             left, right, bino = pupil_io.get_current_gaze()
@@ -772,8 +854,11 @@ class Pupilio:
             left_coordinate_x, left_coordinate_y = left[1], left[2]
             right_coordinate_x, right_coordinate_y = right[1], right[2]
             bino_coordinate_x, bino_coordinate_y = bino[1], bino[2]
+
         Returns:
-            np.ndarray: A Tuple containing the left gaze, right gaze, and binocular gaze as floats.
+            tuple[np.ndarray, np.ndarray, np.ndarray]: Left, right, and binocular gaze, each
+            a 3-element float32 array of ``(valid, x, y)`` where ``valid`` is 1 when the
+            coordinates are usable.
         """
         # Create NumPy float arrays to hold the gaze values
         left_gaze = np.zeros(3, dtype=np.float32)
@@ -791,63 +876,57 @@ class Pupilio:
 
     def calibration_draw(self, screen=None, validate=False, bg_color=(255, 255, 255), hands_free=False):
         """
-        Draw the indicator of the face distance and the eyebrow center position.
-        Draw the calibration UI.
+        Run the full calibration routine on screen.
+
+        Blocks until the participant finishes or quits, walking through head-position
+        adjustment (with a live face preview when ``config.face_previewing`` is on),
+        calibration targets, and optionally validation. The backend is picked from the
+        window type, so the same routine drives both PsychoPy and Pygame experiments.
+
         Args:
-            screen: The screen to draw on. You can choose pygame window or psychopy window
-            validate (bool): Whether to validate the calibration result.
-            bg_color (tuple): Background color, specific parameter for pygame
-            hands_free (bool): Whether to hands free
+            screen: A Pygame ``Surface`` or PsychoPy ``Window`` to draw on. When None, a
+                fullscreen 1920x1080 Pygame window is created.
+            validate (bool): Whether to run validation and show the accuracy report after
+                calibration. Defaults to False.
+            bg_color (tuple): Background colour as RGB 0-255. Defaults to white.
+            hands_free (bool): When True the routine advances on a timer instead of waiting
+                for key presses or clicks, for participants who cannot use an input device.
+
+        Raises:
+            RuntimeError: If ``screen`` is None and a Pygame window cannot be created.
         """
-        from pygame import Surface
         screen_type = ""
         if screen is None:
             try:
                 import pygame
-                from pygame.locals import FULLSCREEN, HWSURFACE
                 pygame.init()
                 scn_width, scn_height = (1920, 1080)
-                screen = pygame.display.set_mode((scn_width, scn_height), FULLSCREEN | HWSURFACE)
+                screen = pygame.display.set_mode((scn_width, scn_height), pygame.FULLSCREEN | pygame.HWSURFACE)
                 screen_type = 'pygame'
-            except:
-                print("The parameter passed is None, creating a new pygame screen.")
-                raise Exception("pygame screen can't be created.")
-        elif isinstance(screen, Surface):
-            screen_type = 'pygame'
+            except Exception as e:
+                logger.error(f"Cannot fallback to pygame screen creation: {e}")
+                raise RuntimeError("pygame screen can't be created.")
         else:
-            from psychopy.visual import Window
-            if isinstance(screen, Window):
+            if hasattr(screen, 'get_size') and hasattr(screen, 'fill'):
+                screen_type = 'pygame'
+            else:
                 screen_type = 'psychopy'
 
-        if screen_type == "":
-            raise Exception("Screen cannot be None. Please pass pygame window or psychopy window instance")
-
         if screen_type == 'pygame':
-            from .graphics_pygame import CalibrationUI
+            from .ui_backend import PyGameUIBackend
+            ui_backend = PyGameUIBackend(screen)
         else:
-            from .graphics import CalibrationUI
+            from .ui_backend import PsychoPyUIBackend
+            ui_backend = PsychoPyUIBackend(screen)
+
+        from .cali_graphics import CalibrationUI
+
+        ui = CalibrationUI(pupil_io=self, ui_backend=ui_backend)
 
         if not hands_free:
-            CalibrationUI(pupil_io=self, screen=screen).draw(validate=validate, bg_color=bg_color)
+            ui.draw(validate=validate, bg_color=bg_color)
         else:
-            CalibrationUI(pupil_io=self, screen=screen).draw_hands_free(validate=validate, bg_color=bg_color)
-
-
-        # if screen is None:
-        #     # 创建默认的 PyGame 全屏窗口
-        #     import pygame
-        #     from pygame.locals import FULLSCREEN, HWSURFACE
-        #     pygame.init()
-        #     screen = pygame.display.set_mode((1920, 1080), FULLSCREEN | HWSURFACE)
-        #
-        #     # 导入统一的校准 UI（内部会根据 screen 类型自动选择后端）
-        # from .cali_graphics import CalibrationUI
-        # ui = CalibrationUI(pupil_io=self, screen=screen, bg_color=bg_color)
-        #
-        # if not hands_free:
-        #     ui.draw(validate=validate, bg_color=bg_color)
-        # else:
-        #     ui.draw_hands_free(validate=validate, bg_color=bg_color)
+            ui.draw_hands_free(validate=validate, bg_color=bg_color)
 
     @deprecated("1.1.2")
     def subscribe_sample(self, subscriber_func: Callable, args=(), kwargs=None):
@@ -866,7 +945,7 @@ class Pupilio:
 
             'left_eye_sample' is an instance of list, which contains 14 elements as follows:
                 left_eye_sample[0]:left eye gaze position x (0~1920)
-                left_eye_sample[1]:left eye gaze position y (0~1920)
+                left_eye_sample[1]:left eye gaze position y (0~1080)
                 left_eye_sample[2]:left eye pupil diameter (0~10) (mm)
                 left_eye_sample[3]:left eye pupil position x
                 left_eye_sample[4]:left eye pupil position y
@@ -881,7 +960,7 @@ class Pupilio:
                 left_eye_sample[13]:left eye valid (0:invalid 1:valid)
             'right_eye_sample' is an instance of list, which contains 14 elements as follows:
                 right_eye_sample[0]:right eye gaze position x (0~1920)
-                right_eye_sample[1]:right eye gaze position y (0~1920)
+                right_eye_sample[1]:right eye gaze position y (0~1080)
                 right_eye_sample[2]:right eye pupil diameter (0~10) (mm)
                 right_eye_sample[3]:right eye pupil position x
                 right_eye_sample[4]:right eye pupil position y
@@ -944,22 +1023,51 @@ class Pupilio:
         pass
 
     def clear_cache(self) -> int:
-        """Clear the cache."""
+        """
+        Discard the samples buffered in the native library.
+
+        Call this between trials to drop data recorded so far; anything not yet written out
+        with :meth:`save_data` is lost.
+
+        Returns:
+            int: An :class:`ET_ReturnCode` value; ``ET_SUCCESS`` on success.
+        """
         return self._et_native_lib.pupil_io_clear_cache()
 
-    @deprecated("1.1.2")
     @property
+    @deprecated("1.1.2")
     def sample_subscriber_lock(self):
+        """Always ``None``; the sample subscription mechanism was removed in 1.1.2."""
         return None
 
-    @deprecated("1.1.2")
     @property
+    @deprecated("1.1.2")
     def sample_subscribers(self):
+        """Always ``None``; the sample subscription mechanism was removed in 1.1.2."""
         return None
 
     def _process_images(self, left_img: np.ndarray, right_img: np.ndarray, eye_rects: np.ndarray,
                         pupil_centers: np.ndarray, glint_centers: np.ndarray) -> np.ndarray:
+        """
+        Compose annotated preview canvases from the raw camera images.
 
+        For each camera the full-frame image is centred on a 1280x1280 canvas and the two
+        detected eye patches are cropped, annotated with the pupil centre (red) and corneal
+        reflection (green), scaled, and tiled along the bottom strip. The surrounding frame
+        is drawn green when every rect, pupil, and glint is valid, and red otherwise, so the
+        participant-facing preview signals tracking quality at a glance. Eye patches for the
+        eye excluded by ``config.active_eye`` are left blank rather than marked invalid.
+
+        Args:
+            left_img (np.ndarray): Grayscale image from the left camera.
+            right_img (np.ndarray): Grayscale image from the right camera.
+            eye_rects (np.ndarray): 16 floats, four ``(x, y, w, h)`` rects in image coordinates.
+            pupil_centers (np.ndarray): 8 floats, four ``(x, y)`` pupil centres.
+            glint_centers (np.ndarray): 8 floats, four ``(x, y)`` corneal reflection centres.
+
+        Returns:
+            np.ndarray: ``(2, 1280, 1280, 3)`` uint8 BGR array, index 0 left and 1 right.
+        """
         IMG_HEIGHT, IMG_WIDTH = 1024, 1280  # Dimensions of the preview images
         _left_img = cv2.cvtColor(left_img, cv2.COLOR_GRAY2BGR)
         _right_img = cv2.cvtColor(right_img, cv2.COLOR_GRAY2BGR)
@@ -1128,11 +1236,16 @@ class Pupilio:
 
     def get_preview_images(self):
         """
-        Retrieves preview images and related eye-tracking data, including eye bounds, pupil centers,
-        and corneal reflection (CR) centers, from the native eye-tracking library.
+        Fetch the latest camera frames and return them as annotated preview canvases.
+
+        Pulls the raw images together with the eye rects, pupil centres, and corneal
+        reflection centres from the native library, then hands them to
+        :meth:`_process_images` for annotation. Buffer dimensions follow the active camera
+        mode: 200 Hz modes deliver full 1280x1024 frames, while native 400 Hz delivers the
+        per-camera ROI reported by :meth:`get_camera_mode`.
 
         Returns:
-            numpy.ndarray: A 3D array containing the left and right grayscale preview images.
+            np.ndarray: ``(2, 1280, 1280, 3)`` uint8 BGR array, index 0 left and 1 right.
         """
 
         if self._camera_mode == CameraMode.CAMERA_MODE_SYNC_200:
@@ -1178,7 +1291,13 @@ class Pupilio:
 
     def _recalibration(self) -> int:
         """
-        Recalibration function
+        Reset the native calibration state so a fresh calibration can start.
+
+        Called by :meth:`calibration_draw` before drawing, which is why discarding the
+        previous calibration is safe here.
+
+        Returns:
+            int: An :class:`ET_ReturnCode` value; ``ET_SUCCESS`` on success.
         """
         return self._et_native_lib.pupil_io_recalibrate()
 
@@ -1191,14 +1310,22 @@ class Pupilio:
                           avatar_pupil_left: tuple,  # 头像左瞳孔 (x, y)
                           avatar_pupil_right: tuple) -> None:
         """
-        将人脸头像通过瞳孔对齐绘制到图像上。
-        参数:
-            img: 目标图像 (H, W, 3) uint8, 就地修改
-            eye_rect_a/b: 检测到的左右眼矩形 (x, y, w, h)
-            pupil_a/b: 检测到的瞳孔坐标 (x, y)
-            avatar_bgr: 头像彩色图
-            avatar_alpha: 头像 alpha 蒙版 (0-255)
-            avatar_pupil_left/right: 头像素材中左右瞳孔坐标 (x, y)
+        Blend the face avatar onto an image, aligned by pupil positions.
+
+        The avatar is scaled and translated so its own two pupils land on the detected
+        pupils, then alpha-composited in place. Nothing is drawn if either eye rect is empty.
+
+        Args:
+            img (np.ndarray): Target ``(H, W, 3)`` uint8 image, modified in place.
+            eye_rect_a (tuple | np.ndarray): First detected eye rect ``(x, y, w, h)``.
+            eye_rect_b (tuple | np.ndarray): Second detected eye rect ``(x, y, w, h)``.
+            pupil_a (tuple | np.ndarray): Pupil centre ``(x, y)`` inside ``eye_rect_a``.
+            pupil_b (tuple | np.ndarray): Pupil centre ``(x, y)`` inside ``eye_rect_b``.
+            avatar_pupil_left (tuple): Left pupil ``(x, y)`` in the avatar artwork.
+            avatar_pupil_right (tuple): Right pupil ``(x, y)`` in the avatar artwork.
+
+        Returns:
+            None
         """
         # 有效性检查
         valid_a = eye_rect_a[2] > 0 and eye_rect_a[3] > 0

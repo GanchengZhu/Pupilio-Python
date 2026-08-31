@@ -1,675 +1,590 @@
 # _*_ coding: utf-8 _*_
-# Copyright (c) 2024, Hangzhou DeepGaze Science and Technology Co., Ltd
-# All Rights Reserved
-#
-# For use by  Hangzhou DeepGaze Science and Technology Co., Ltd licencees only.
-# Redistribution and use in source and binary forms, with or without
-# modification, are NOT permitted.
-#
-# Redistributions in binary form must reproduce the above copyright
-# notice, this list of conditions and the following disclaimer in
-# the documentation and/or other materials provided with the distribution.
-#
-# Neither name of  Hangzhou DeepGaze Science and Technology Co., Ltd nor the name of
-# contributors may be used to endorse or promote products derived from
-# this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ``AS
-# IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
-# TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
-# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR
-# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-# PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-# LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-# NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-# DESCRIPTION:
-# Calibration graphics with UIBackend (supports pygame & psychopy)
-
-import logging
+# Author: GC Zhu
+# Email: zhugc2016@gmail.com
 import os
-import platform
-import random
 import time
-
-import cv2
+import math
+import random
+import logging
+from datetime import datetime
+from pathlib import Path
+import json
+import pygame
 import numpy as np
 
-from .default_config import DefaultConfig
-from .misc import ET_ReturnCode, LocalConfig, Calculator
-from .ui_backend import UIBackend, PyGameUIBackend, PsychoPyUIBackend
+from .misc import ET_ReturnCode, Calculator
+from .callback import CalibrationListener
+
+logger = logging.getLogger(__name__)
+
+SCREEN_CENTER_X = 960.0
+SCREEN_CENTER_Y = 540.0
+SCALE_X = 7.0
+SCALE_Y = 10.0
+BEST_RANGE_R = 80.0
+BOUNDARY_R = 320.0
+K_Z_RADIUS = 1.0
+MIN_FACE_R = 10.0
+Z_OPTIMAL_BASE = -500.0
+Z_SAFE_MIN = -600.0
+Z_SAFE_MAX = -400.0
+LINE_THICK_BOUND = 6
+LINE_THICK_BEST = 3
+
+COLOR_GREEN = (0, 255, 0)
+COLOR_RED = (255, 0, 0)
+COLOR_YELLOW = (255, 255, 0)
+COLOR_BLACK = (0, 0, 0)
+COLOR_CRIMSON = (220, 20, 60)
+COLOR_CORAL = (240, 128, 128)
 
 
-class CalibrationUI(object):
-    def __init__(self, pupil_io, screen, bg_color=(255, 255, 255)):
+class CalibrationUI:
+    """
+    Backend-agnostic calibration and validation routine.
+
+    Owns the whole participant-facing flow: head-position adjustment with an optional live
+    camera preview, the animated calibration targets, and an optional validation pass that
+    reports per-point accuracy in degrees of visual angle. All drawing goes through a
+    :class:`~pupilio.ui_backend.UIBackend`, so the same routine runs under Pygame and
+    PsychoPy. Audio is always played through ``pygame.mixer`` so cues sound identical on
+    either backend.
+
+    The flow is a state machine advanced by :meth:`draw`, whose phases are tracked by the
+    ``_phase_*`` and ``_*_preparing`` flags reset in :meth:`initialize_variables`.
+    """
+
+    def __init__(self, pupil_io, ui_backend):
+        """
+        Prepare the calibration UI for a single run.
+
+        Loads the audio cues, measures the screen through the backend, and shuffles the four
+        peripheral validation targets so participants cannot anticipate the order; the
+        central target is always validated last.
+
+        Args:
+            pupil_io (Pupilio): Connected tracker instance to calibrate.
+            ui_backend (UIBackend): Drawing and input backend to render through.
+        """
         self._pupil_io = pupil_io
+        self.ui = ui_backend
+        self.config = self._pupil_io.config
 
-        try:
-            import pygame
-            if isinstance(screen, pygame.Surface):
-                self._backend = PyGameUIBackend(screen, bg_color=bg_color)
-            else:
-                self._backend = PsychoPyUIBackend(screen)
-        except ImportError:
-            self._backend = PyGameUIBackend(screen, bg_color=bg_color)
-
-        # 保存 screen 引用（后续少数地方可能仍需）
-        self._screen = screen
-        self._screen_width, self._screen_height = self._backend.get_screen_size()
-
-        # 后端类型标记，用于事件分支
-        self._is_pygame_backend = isinstance(self._backend, PyGameUIBackend)
-
-        # 字体相关（保留名称，供 backend.draw_text 使用）
-        if platform.system().lower() == 'windows':
-            self._font_name = "microsoftyaheiui" if "microsoftyaheiui" in pygame.font.get_fonts() else \
-                pygame.font.get_fonts()[0]
-        else:
-            self._font_name = None  # psychopy 或 linux 由 backend 自行处理
-        self._instruction_font_size = 24
-        self._error_font_size = 20
-
-        # 颜色常量
-        self._BLACK = (0, 0, 0)
-        self._RED = (255, 0, 0)
-        self._GREEN = (0, 255, 0)
-        self._BLUE = (0, 0, 255)
-        self._WHITE = (255, 255, 255)
-        self._CRIMSON = (220, 20, 60)
-        self._CORAL = (240, 128, 128)
-        self._GRAY = (128, 128, 128)
-
-        self.config: DefaultConfig = self._pupil_io.config
-        self._calibrationPoint = self._pupil_io.calibration_points
-
-        # 面部矩形区域
-        self._face_in_rect = (660, 240, 600, 600)
-
-        self._current_dir = os.path.abspath(os.path.dirname(__file__))
-
-        # 声音加载（分配 ID）
-        self._beep_sound_path = self.config.cali_target_beep
-        self._adjust_position_sound_path = os.path.join(self._current_dir, "asset", "adjust_position.wav")
-        self._backend.load_sound(self._beep_sound_path, "beep")
-        self._backend.load_sound(self.config.calibration_instruction_sound_path, "cali_ins")
-        self._backend.load_sound(self._adjust_position_sound_path, "adjust_pos")
-
+        # --- 声音系统完全依赖 pygame，确保跨端行为一致 ---
+        pygame.mixer.init()
+        self._sound_beep = pygame.mixer.Sound(self.config.cali_target_beep)
+        self._sound_ins = pygame.mixer.Sound(self.config.calibration_instruction_sound_path)
+        self._sound_pos = pygame.mixer.Sound(os.path.join(self.config._current_dir, "asset", "adjust_position.wav"))
         self._just_pos_sound_once = False
 
-        # 面部表情图像
-        self._frowning_face_path = self.config.cali_frowning_face_img
-        self._smiling_face_path = self.config.cali_smiling_face_img
+        self._screen_width, self._screen_height = self.ui.get_screen_size()
 
-        # 动画目标参数
-        self._animation_frequency = self.config.cali_target_animation_frequency
-        # 动画帧：预计算尺寸，绘制时直接使用尺寸+图像路径（不创建 Surface）
-        _max_size = self.config.cali_target_img_maximum_size
-        _min_size = self.config.cali_target_img_minimum_size
-        self._animation_size = [
-            (_min_size + (_max_size - _min_size) * i / 19,
-             _min_size + (_max_size - _min_size) * i / 19)
-            for i in range(20)
-        ]
-        self._target_img_path = self.config.cali_target_img
+        import platform
+        self._font_name = "microsoftyaheiui" if platform.system().lower() == 'windows' else "Arial"
 
-        # 倒计时数字资源（保持为图像路径，或通过 backend.draw_image 绘制）
-        self._clock_resource_dict = {}
-        self._clock_resource_height = 100
-        for n in range(10):
-            path = os.path.join(self._current_dir, "asset", f"figure_{n}.png")
-            self._clock_resource_dict[str(n)] = path
-        self._clock_resource_dict['.'] = os.path.join(self._current_dir, "asset", "dot.png")
-
-        # 本地配置
-        self._local_config = LocalConfig()
         self._calculator = Calculator(
             screen_width=self._screen_width,
             screen_height=self._screen_height,
-            physical_screen_width=self._local_config.dp_config['physical_screen_width'],
-            physical_screen_height=self._local_config.dp_config['physical_screen_height'])
+            physical_screen_width=34.13,
+            physical_screen_height=19.32
+        )
 
-        self._calibration_bounds = (0, 0, self._screen_width, self._screen_height)
-
-        # 验证点生成
-        self._validation_points = [
-            [0.5, 0.08],
-            [0.08, 0.5], [0.92, 0.5],
-            [0.5, 0.92]]
+        self._validation_points = [[0.5, 0.08], [0.08, 0.5], [0.92, 0.5], [0.5, 0.92]]
         random.shuffle(self._validation_points)
-        self._validation_points += [[0.5, 0.5]]
-        for _point in self._validation_points:
-            _point[0] = _point[0] * (self._calibration_bounds[2] - self._calibration_bounds[0])
-            _point[1] = _point[1] * (self._calibration_bounds[3] - self._calibration_bounds[1])
+        self._validation_points.append([0.5, 0.5])
+        # 转换为像素坐标系(左上角基准)
+        for p in self._validation_points:
+            p[0] = int(p[0] * self._screen_width)
+            p[1] = int(p[1] * self._screen_height)
 
-        # 预览参数
-        self._PREVIEWER_IMG_WIDTH = 512
-        self._PREVIEWER_IMG_HEIGHT = 512
-        self._PREVIEWER_SIZE = (self._PREVIEWER_IMG_WIDTH, self._PREVIEWER_IMG_HEIGHT)
-
-        self._LEFT_PREVIEWER_POS = [
-            self._PREVIEWER_IMG_WIDTH // 2 + 79,
-            self._screen_height // 2]
-        self._RIGHT_PREVIEWER_POS = [
-            self._screen_width - self._PREVIEWER_IMG_WIDTH // 2 - 79,
-            self._screen_height // 2]
-
-        self._LEFT_PREVIEWER_POS[0] -= self._PREVIEWER_IMG_WIDTH // 2
-        self._RIGHT_PREVIEWER_POS[0] -= self._PREVIEWER_IMG_WIDTH // 2
-        self._LEFT_PREVIEWER_POS[1] -= self._PREVIEWER_IMG_HEIGHT // 2
-        self._RIGHT_PREVIEWER_POS[1] -= self._PREVIEWER_IMG_HEIGHT // 2
-
-        self._LEFT_PREVIEWER_RECT = (self._LEFT_PREVIEWER_POS[0], self._LEFT_PREVIEWER_POS[1],
-                                     self._PREVIEWER_SIZE[0], self._PREVIEWER_SIZE[1])
-        self._RIGHT_PREVIEWER_RECT = (self._RIGHT_PREVIEWER_POS[0], self._RIGHT_PREVIEWER_POS[1],
-                                      self._PREVIEWER_SIZE[0], self._PREVIEWER_SIZE[1])
-        # 各种状态变量
         self.initialize_variables()
 
     def initialize_variables(self):
-        """初始化状态变量"""
+        """
+        Reset the state machine to its starting phase.
+
+        Called before each run so a recalibration begins from head adjustment with empty
+        sample stores rather than inheriting the previous attempt's state.
+        """
+        self._exit = False
         self._phase_adjust_position = True
         self._calibration_preparing = False
         self._validation_preparing = False
         self._phase_calibration = False
         self._phase_validation = False
+        self._phase_calibration_failed = False
         self._need_validation = False
-        self.graphics_finished = False
-        self._exit = False
+        self._drawing_validation_result = False
         self._calibration_drawing_list = [0, 1, 2, 3, 4]
+
+        self._calibration_point_index = 0
         self._calibration_timer = 0
         self._validation_timer = 0
-        self._validation_left_sample_store = [[] for _ in range(len(self._validation_points) + 1)]
-        self._validation_right_sample_store = [[] for _ in range(len(self._validation_points) + 1)]
-        self._validation_left_eye_distance_store = [[] for _ in range(len(self._validation_points) + 1)]
-        self._validation_right_eye_distance_store = [[] for _ in range(len(self._validation_points) + 1)]
+
+        self._validation_left_sample_store = [[] for _ in range(5)]
+        self._validation_right_sample_store = [[] for _ in range(5)]
+        self._validation_left_eye_distance_store = [[] for _ in range(5)]
+        self._validation_right_eye_distance_store = [[] for _ in range(5)]
+
         self._n_validation = 0
         self._error_threshold = 2
-        self._calibration_point_index = 0
-        self._drawing_validation_result = False
-        self._hands_free = False
         self._hands_free_adjust_head_wait_time = 11
-        self._hands_free_adjust_head_start_timestamp = 0
+        self._hands_free_start_timestamp = 0
         self._validation_finished_timer = 0
         self._preparing_hands_free_start = 0
 
-    # ------------------- 辅助绘制方法 (使用 backend) -------------------
-    def _draw_error_line(self, ground_truth_point, estimated_point, error_color):
-        """绘制真实点与估计点之间的误差线（十字）"""
-        # 绘制十字
-        self._backend.draw_text("+", self._font_name, self._error_font_size, self._GREEN,
-                                (ground_truth_point[0] - 10, ground_truth_point[1] - 10, 20, 20), 'center')
-        if isinstance(estimated_point, np.ndarray):
-            self._backend.draw_text("+", self._font_name, self._error_font_size, error_color,
-                                    (int(estimated_point[0]) - 10, int(estimated_point[1]) - 10, 20, 20), 'center')
-            self._backend.draw_line(ground_truth_point[0], ground_truth_point[1],
-                                    int(estimated_point[0]), int(estimated_point[1]),
-                                    self._BLACK, 1)
+    def play_sound(self, snd):
+        """
+        Play an audio cue, ignoring failures.
 
-    def _draw_error_text(self, min_error, ground_truth_point, is_left=True):
-        """显示误差度数"""
-        error_degrees = min_error
-        y_offset = 20 if is_left else 40
-        text = f"{'L' if is_left else 'R'}: {error_degrees:.2f}°"
-        self._backend.draw_text(text, self._font_name, self._error_font_size, self._BLACK,
-                                (ground_truth_point[0] - 60, ground_truth_point[1] + y_offset, 120, 20), 'center')
+        Audio is a non-essential cue, so a missing device or busy mixer must not abort
+        calibration.
 
-    def _draw_recali_and_continue_tips(self):
-        """显示重新校准提示"""
-        legend_texts = [self.config.instruction_calibration_over,
-                        self.config.instruction_recalibration]
-        x_positions = {
-            'en-': self._screen_width - 600,
-            'zh-': self._screen_width - 464,
-            'jp-': self._screen_width - 712,
-            'ko-': self._screen_width - 464,
-            'fr-': self._screen_width - 715,
-            'es-': self._screen_width - 512,
-        }
-        x = x_positions.get(self.config._lang[:3], 0)
-        y = self._screen_height - 96
-        for content in legend_texts:
-            for line in content.split("\n"):
-                self._backend.draw_text(line, self._font_name, self._error_font_size, self._BLACK,
-                                        (x - 200, y, 400, 20), 'center')
-                y += 22
+        Args:
+            snd (pygame.mixer.Sound): The cue to play.
+        """
+        try:
+            snd.play()
+        except Exception:
+            logger.debug("Failed to play calibration sound.", exc_info=True)
 
-    def _draw_legend(self):
-        """绘制图例"""
-        texts = [self.config.legend_target, self.config.legend_left_eye, self.config.legend_right_eye]
-        colors = [self._GREEN, self._CRIMSON, self._CORAL]
-        x = 128
-        y = self._screen_height - 128
-        for text, color in zip(texts, colors):
-            self._backend.draw_text("+", self._font_name, self._error_font_size, color,
-                                    (x - 20, y - 10, 40, 20), 'center')
-            self._backend.draw_text(text, self._font_name, self._error_font_size, self._BLACK,
-                                    (x + 20, y - 10, 200, 20), 'left')
-            y += 25
+    def stop_sound(self, snd):
+        """
+        Stop an audio cue, ignoring failures.
 
-    def _draw_animation(self, point, time_elapsed):
-        """绘制校准/验证动画目标"""
-        idx = int(time_elapsed // (1 / (self._animation_frequency * 10))) % 10
-        w, h = self._animation_size[idx]
-        rect = (int(point[0] - w // 2), int(point[1] - h // 2), int(w), int(h))
-        self._backend.draw_image(self._target_img_path, rect)
+        Args:
+            snd (pygame.mixer.Sound): The cue to stop.
+        """
+        try:
+            snd.stop()
+        except Exception:
+            logger.debug("Failed to stop calibration sound.", exc_info=True)
 
-    def _draw_previewer(self):
-        """绘制左右眼预览窗口"""
-        _left_img, _right_img = self._pupil_io.get_preview_images()
-        # 缩放并旋转（适配原逻辑）
-        _left_img = cv2.resize(_left_img, self._PREVIEWER_SIZE)
-        _right_img = cv2.resize(_right_img, self._PREVIEWER_SIZE)
-        if self._backend.name == "pygame":
-            _left_img = cv2.rotate(_left_img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-            _right_img = cv2.rotate(_right_img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-        _left_img = cv2.flip(_left_img, 0)
-        _right_img = cv2.flip(_right_img, 0)
+    def _draw_text_center(self, text, x_offset=0, y_offset=0):
+        """
+        Draw multi-line text centred on screen.
 
-        self._backend.draw_texture(_left_img, self._LEFT_PREVIEWER_RECT)
+        Args:
+            text (str): Text to draw; ``\\n`` starts a new line, stacked 40 px apart.
+            x_offset (int): Horizontal shift from screen centre, in pixels.
+            y_offset (int): Vertical shift from screen centre, in pixels.
+        """
+        lines = text.split("\n")
+        shift = 0
+        cx = self._screen_width // 2 + x_offset
+        cy = self._screen_height // 2 + y_offset
+        for t in lines:
+            self.ui.draw_text(t, self._font_name, 32, COLOR_BLACK, (cx - 400, cy + shift - 20, 800, 40))
+            shift += 40
 
-        self._backend.draw_texture(_right_img, self._RIGHT_PREVIEWER_RECT)
-
-    def _draw_face_and_rect(self, face_img_path, face_center, face_w, face_h, rect, rect_color, instruction_text):
-        """绘制脸部图像、矩形框及提示文字"""
-        # 矩形
-        self._backend.draw_rect(rect, rect_color, 5)
-        # 脸部图像（拉伸至指定尺寸）
-        self._backend.draw_image(face_img_path, (face_center[0], face_center[1], face_w, face_h))
-        # 提示文字
-        for i, line in enumerate(instruction_text.split("\n")):
-            y = face_center[1] + face_h + 20 + i * 25
-            self._backend.draw_text(line, self._font_name, self._instruction_font_size, self._BLACK,
-                                    (face_center[0] - 200, y, 400, 25), 'center')
-
-    def _draw_text_center(self, text):
-        """屏幕居中显示多行文本"""
-        self._backend.draw_text_on_screen_center(text, self._font_name, self._instruction_font_size, self._BLACK)
-
-    # ------------------- 业务逻辑绘制方法（适配 backend） -------------------
     def _draw_adjust_position(self):
+        """
+        Draw the head-positioning guide for one frame.
+
+        Maps the tracked face onto screen as a circle whose size follows viewing distance and
+        whose colour fades green to red as the participant leaves the optimal range, inside a
+        boundary box that turns red when the face drifts out of the head box. In hands-free
+        mode, holding a good position for the countdown advances to calibration automatically;
+        drifting out resets the countdown.
+        """
         if not self._just_pos_sound_once:
             if self._hands_free:
-                self._backend.play_sound("adjust_pos")
+                self.play_sound(self._sound_pos)
             self._just_pos_sound_once = True
 
         _status, _face_position = self._pupil_io.face_position()
-        _face_position = _face_position.tolist()
-        face_x, face_y, face_z = _face_position
+        face_mm_z = _face_position[2]
+        face_x_offset = 32.0 if self._pupil_io.config.active_eye in [-1, 'left'] else (
+            -32.0 if self._pupil_io.config.active_eye in [1, 'right'] else 0.0)
 
-        # 根据活动眼计算偏移
-        active_eye = self._pupil_io.config.active_eye
-        if active_eye in [-1, 'left']:
-            face_x_offset = 32
-        elif active_eye in [1, 'right']:
-            face_x_offset = -32
+        # 转换为左上角像素坐标
+        face_px_x = SCREEN_CENTER_X + (_face_position[0] - 172.08 + face_x_offset) * SCALE_X
+        y_offset = 110.0 if self._pupil_io.config.sampling_rate == 200 else 130.0
+        face_px_y = SCREEN_CENTER_Y + (_face_position[1] - y_offset) * SCALE_Y
+
+        instruction_text = ""
+        if face_mm_z > Z_SAFE_MAX or face_mm_z < Z_SAFE_MIN:
+            face_rgb = COLOR_RED
+            instruction_text = self.config.instruction_face_far if face_mm_z > Z_SAFE_MAX else self.config.instruction_face_near
         else:
-            face_x_offset = 0
+            ratio = min(abs(face_mm_z - Z_OPTIMAL_BASE) / 100.0, 1.0)
+            # RGB 过渡：绿 到 红
+            face_rgb = (int(COLOR_RED[0] * ratio + COLOR_GREEN[0] * (1 - ratio)),
+                        int(COLOR_RED[1] * ratio + COLOR_GREEN[1] * (1 - ratio)), 0)
 
-        eyebrow_center = [
-            self._screen_width // 2 + (face_x - 172.08 + face_x_offset) * 10,
-            self._screen_height // 2 + (face_y - 96.79) * 10
-        ]
+        face_radius = max(BEST_RANGE_R + (face_mm_z - Z_OPTIMAL_BASE) * K_Z_RADIUS, MIN_FACE_R)
 
-        rect = self._face_in_rect
-        in_rect = UIBackend.pos_in_rect(eyebrow_center, rect)
-        rect_color = self._GREEN if in_rect else self._RED
-        instruction = "" if in_rect else self.config.instruction_head_center
+        dx = face_px_x - SCREEN_CENTER_X
+        dy = face_px_y - SCREEN_CENTER_Y
+        is_inside_bound = (np.sqrt(dx ** 2 + dy ** 2) + face_radius) <= BOUNDARY_R
 
-        # 距离检测
-        if face_z == 0:
-            face_z = 65536
-        color_ratio = 280 / abs(face_z)
-        good_distance = -630 <= face_z <= -530
-        face_img = self._smiling_face_path if good_distance else self._frowning_face_path
-        face_color = self._GREEN if good_distance else self._RED
-        if not good_distance:
-            instruction = self.config.instruction_face_far if face_z > -530 else self.config.instruction_face_near
+        bound_color = COLOR_GREEN if is_inside_bound else COLOR_RED
 
-        # 绘制脸部及矩形
-        face_w = int(color_ratio * 256)
-        face_h = int(color_ratio * 256)
-        self._backend.draw_rect(rect, rect_color, 5)
-        self._backend.draw_image(face_img, (eyebrow_center[0], eyebrow_center[1], face_w, face_h))
-        for i, line in enumerate(instruction.split("\n")):
-            y = eyebrow_center[1] + face_h + 20 + i * 25
-            self._backend.draw_text(line, self._font_name, self._instruction_font_size, self._BLACK,
-                                    (eyebrow_center[0] - 200, y, 400, 25), 'center')
+        # 绘制边界框
+        self.ui.draw_rect((int(SCREEN_CENTER_X - BOUNDARY_R), int(SCREEN_CENTER_Y - BOUNDARY_R),
+                           int(BOUNDARY_R * 2), int(BOUNDARY_R * 2)), bound_color, LINE_THICK_BOUND)
 
-        # 免手模式自动跳转判断
+        # 绘制人脸图片 (自动缩放)
+        face_img = self.config.cali_frowning_face_img if face_mm_z > Z_SAFE_MAX or face_mm_z < Z_SAFE_MIN else self.config.cali_smiling_face_img
+        r_size = int(face_radius * 3)
+        self.ui.draw_image(face_img, (int(face_px_x - r_size // 2), int(face_px_y - r_size // 2), r_size, r_size))
+
+        # 绘制最优圈
+        self.ui.draw_circle(SCREEN_CENTER_X, SCREEN_CENTER_Y, BEST_RANGE_R, COLOR_YELLOW, LINE_THICK_BEST)
+
+        if instruction_text:
+            self._draw_text_center(instruction_text, x_offset=int(face_px_x - SCREEN_CENTER_X),
+                                   y_offset=int(face_px_y + face_radius + 20 - SCREEN_CENTER_Y))
+
         if self._hands_free:
-            if good_distance and in_rect and self._hands_free_adjust_head_wait_time <= 0:
+            safe_z_range = (Z_SAFE_MIN <= face_mm_z <= Z_SAFE_MAX)
+            if safe_z_range and is_inside_bound and self._hands_free_adjust_head_wait_time <= 0:
                 self._phase_adjust_position = False
                 self._calibration_preparing = True
-            elif good_distance and in_rect and self._hands_free_adjust_head_wait_time > 0:
-                if self._hands_free_adjust_head_start_timestamp == 0:
-                    self._hands_free_adjust_head_start_timestamp = time.time()
+            elif safe_z_range and is_inside_bound:
+                if self._hands_free_start_timestamp == 0:
+                    self._hands_free_start_timestamp = time.time()
                 else:
-                    elapsed = time.time() - self._hands_free_adjust_head_start_timestamp
-                    self._hands_free_adjust_head_wait_time -= elapsed
-                    self._hands_free_adjust_head_start_timestamp = time.time()
+                    now = time.time()
+                    self._hands_free_adjust_head_wait_time -= (now - self._hands_free_start_timestamp)
+                    self._hands_free_start_timestamp = now
             else:
-                self._hands_free_adjust_head_start_timestamp = 0
+                self._hands_free_start_timestamp = 0
+
+    def _draw_previewer(self):
+        """
+        Draw the live camera preview for both eyes.
+
+        Each frame is rotated and flipped into screen orientation, then drawn to the outer
+        edges of the display so the central head-position guide stays unobstructed.
+        """
+        _left_img, _right_img = self._pupil_io.get_preview_images()
+        import cv2
+        _left_img = cv2.rotate(cv2.resize(_left_img, (512, 512)), cv2.ROTATE_90_COUNTERCLOCKWISE)
+        _right_img = cv2.rotate(cv2.resize(_right_img, (512, 512)), cv2.ROTATE_90_COUNTERCLOCKWISE)
+        _left_img = cv2.flip(_left_img, 0)
+        _right_img = cv2.flip(_right_img, 0)
+
+        cy = self._screen_height // 2
+        # 左眼
+        self.ui.draw_texture(_left_img, (79, cy - 256, 512, 512))
+        # 右眼
+        self.ui.draw_texture(_right_img, (self._screen_width - 512 - 79, cy - 256, 512, 512))
+
+    def _clear_pending_input(self):
+        """
+        Drop buffered key presses and clicks.
+
+        Called when a screen that waits for a response appears, so input the participant made
+        during the previous phase cannot dismiss it before they have seen it.
+        """
+        self.ui.clear_events()
+
+    def _should_prompt_on_calibration_failure(self):
+        """
+        Decide whether a failed calibration should ask the participant what to do.
+
+        The prompt is skipped in hands-free mode, where nobody can answer it, and when kappa
+        verification is disabled, since the failure it reports is the one being ignored.
+
+        Returns:
+            bool: True if the retry-or-skip screen should be shown.
+        """
+        return not self._hands_free and bool(self.config.enable_kappa_verification)
+
+    def _finish_calibration(self):
+        """
+        Leave the calibration phase for validation, or exit when validation is not wanted.
+        """
+        self._phase_calibration = False
+        self._phase_calibration_failed = False
+        if self._need_validation:
+            self._validation_preparing = not self._hands_free
+            self._phase_validation = self._hands_free
+            self._clear_pending_input()
+        else:
+            self._exit = True
+
+    def _draw_calibration_failed(self):
+        """
+        Ask the participant whether to recalibrate or continue after a failed calibration.
+
+        Shown when the tracker rejects the calibration, typically because the estimated kappa
+        angle failed verification. The routine waits here until the participant chooses.
+        """
+        self._draw_text_center(
+            f"{self.config.instruction_calibration_failed}\n"
+            f"{self.config.instruction_recalibration}\n"
+            f"{self.config.instruction_calibration_over}"
+        )
 
     def _draw_calibration_point(self):
+        """
+        Show the current calibration target and feed samples to the tracker.
+
+        Draws the target with a ping-pong size animation that draws the eye to it, and calls
+        :meth:`~pupilio.core.Pupilio.calibration` each frame. Advances to the next target or
+        ends the calibration phase according to the returned status code, notifying
+        ``config.calibration_listener`` whenever a new target appears.
+        """
         if self._calibration_timer == 0:
-            self._backend.stop_sound("beep")
-            self._backend.play_sound("beep")
+            self.stop_sound(self._sound_beep)
+            self.play_sound(self._sound_beep)
             self._calibration_timer = time.time()
 
-        elapsed = time.time() - self._calibration_timer
-        status = self._pupil_io.calibration(self._calibration_point_index)
+        time_elapsed = time.time() - self._calibration_timer
+        _status = self._pupil_io.calibration(self._calibration_point_index)
 
-        if status == ET_ReturnCode.ET_CALI_NEXT_POINT.value or status == ET_ReturnCode.ET_SUCCESS.value:
-            if status == ET_ReturnCode.ET_SUCCESS.value or self._calibration_point_index + 1 == len(
-                    self._calibrationPoint):
-                self._phase_calibration = False
-                if self._need_validation:
-                    if self._hands_free:
-                        self._phase_validation = True
-                    else:
-                        self._validation_preparing = True
-                else:
-                    self._exit = True
-                    self.graphics_finished = True
+        if _status == ET_ReturnCode.ET_CALI_NEXT_POINT.value:
+            if self._calibration_point_index + 1 == len(self._pupil_io.calibration_points):
+                self._finish_calibration()
             else:
                 self._calibration_point_index += 1
                 self._calibration_timer = 0
-                self._backend.stop_sound("beep")
-                self._backend.play_sound("beep")
-
-            if self.config.calibration_listener:
-                self.config.calibration_listener.on_calibration_target_onset(self._calibration_point_index)
-
-        point = self._calibrationPoint[self._calibration_point_index]
-        self._draw_animation(point, elapsed)
-
-    def _draw_validation_point(self):
-        if not self._calibration_drawing_list:
-            if self._n_validation == 1:
-                self._repeat_calibration_point()
+                self.stop_sound(self._sound_beep)
+                self.play_sound(self._sound_beep)
+                if hasattr(self.config, 'calibration_listener') and self.config.calibration_listener:
+                    self.config.calibration_listener.on_calibration_target_onset(self._calibration_point_index)
+        elif _status == ET_ReturnCode.ET_SUCCESS.value:
+            self.stop_sound(self._sound_beep)
+            self._finish_calibration()
+        elif _status == ET_ReturnCode.ET_FAILED.value:
+            self.stop_sound(self._sound_beep)
+            self._phase_calibration = False
+            if self._should_prompt_on_calibration_failure():
+                self._phase_calibration_failed = True
+                self._clear_pending_input()
             else:
-                # 结束验证，显示结果
-                if self._hands_free and not self._validation_finished_timer:
-                    self._validation_finished_timer = time.time()
-                elif self._hands_free and self._validation_finished_timer:
-                    if time.time() - self._validation_finished_timer > 3:
-                        self._phase_validation = False
+                self._finish_calibration()
+            return
 
-                # 保存结果
-                if self.config.enable_validation_result_saving and not self._drawing_validation_result:
-                    ...  # 原有保存逻辑不变
+        # 绘制呼吸效果风车
+        _point = self._pupil_io.calibration_points[self._calibration_point_index]
+        cx = int(_point[0] * self._screen_width) if _point[0] <= 1.0 else int(_point[0])
+        cy = int(_point[1] * self._screen_height) if _point[1] <= 1.0 else int(_point[1])
 
-                # 绘制误差
-                for idx in range(len(self._validation_points)):
-                    gt = self._validation_points[idx]
-                    left_samples = self._validation_left_sample_store[idx]
-                    right_samples = self._validation_right_sample_store[idx]
-                    left_dist = self._validation_left_eye_distance_store[idx]
-                    right_dist = self._validation_right_eye_distance_store[idx]
+        anim_idx = int(time_elapsed // (1 / (self.config.cali_target_animation_frequency * 10))) % 20
+        anim_idx = anim_idx if anim_idx < 10 else 19 - anim_idx  # Ping-pong effect
+        _max, _min = self.config.cali_target_img_maximum_size, self.config.cali_target_img_minimum_size
+        size = int(_min + (_max - _min) * anim_idx / 9)
+        self.ui.draw_image(self.config.cali_target_img, (cx - size // 2, cy - size // 2, size, size))
 
-                    if self._pupil_io.config.active_eye in [-1, 'left', 0, 'bino']:
-                        res = self._calculator.calculate_error_by_sliding_window(gt, left_samples, left_dist)
-                        if res:
-                            self._draw_error_line(gt, res["min_error_es_point"], self._CRIMSON)
-                            self._draw_error_text(res["min_error"], gt, True)
-                    if self._pupil_io.config.active_eye in [1, 'right', 0, 'bino']:
-                        res = self._calculator.calculate_error_by_sliding_window(gt, right_samples, right_dist)
-                        if res:
-                            self._draw_error_line(gt, res["min_error_es_point"], self._CRIMSON)
-                            self._draw_error_text(res["min_error"], gt, False)
+    def draw(self, validate=False, bg_color=(255, 255, 255), hands_free=False):
+        """
+        Run the calibration routine, blocking until it finishes.
 
-                self._draw_legend()
-                self._draw_recali_and_continue_tips()
-                self._drawing_validation_result = True
-        else:
-            if self._validation_timer == 0:
-                self._backend.stop_sound("beep")
-                self._backend.play_sound("beep")
-                self._validation_timer = time.time()
+        Drives the phase sequence head adjustment, calibration, and optionally validation,
+        dispatching on input from the backend each frame: continue advances to the next
+        phase, recali restarts from the validation result or calibration failure screen, and
+        quit aborts. Buffered input is dropped whenever a screen that waits for a response
+        appears, so a key pressed earlier cannot skip past it. Any existing calibration is
+        discarded before starting.
 
-            elapsed = time.time() - self._validation_timer
-            if elapsed > 1.5:
-                self._calibration_drawing_list.pop()
-                self._validation_timer = 0
-                if not self._calibration_drawing_list:
-                    self._n_validation += 1
-                self._backend.stop_sound("beep")
-            else:
-                point = self._validation_points[self._calibration_drawing_list[-1]]
-                _, left_sample, right_sample, _, _, _ = self._pupil_io.estimate_gaze()
-                self._draw_animation(point, elapsed)
-
-                if 0 < elapsed <= 1.5:
-                    left_gaze = left_sample[:2]
-                    right_gaze = right_sample[:2]
-                    if left_sample[13] == 1:
-                        self._validation_left_sample_store[self._calibration_drawing_list[-1]].append(left_gaze)
-                        self._validation_left_eye_distance_store[self._calibration_drawing_list[-1]].append(
-                            abs(left_sample[5]) / 10)
-                    if right_sample[13] == 1:
-                        self._validation_right_sample_store[self._calibration_drawing_list[-1]].append(right_gaze)
-                        self._validation_right_eye_distance_store[self._calibration_drawing_list[-1]].append(
-                            abs(right_sample[5]) / 10)
-
-    def _draw_calibration_preparing(self):
-        self._draw_text_center(self.config.instruction_enter_calibration)
-
-    def _draw_calibration_preparing_hands_free(self):
-        if not self._preparing_hands_free_start:
-            self._preparing_hands_free_start = time.time()
-            self._backend.play_sound("cali_ins")
-
-        elapsed = time.time() - self._preparing_hands_free_start
-        if elapsed <= 9.0:
-            self._draw_text_center(self.config.instruction_hands_free_calibration)
-            rest = f"{int(10 - elapsed)}"
-            # 绘制倒计时数字
-            digit_w = self._clock_resource_height / 0.8  # 假设比例
-            x_center = self._screen_width // 2
-            y_center = self._screen_height // 2 - 200
-            total_w = len(rest) * digit_w
-            for i, ch in enumerate(rest):
-                path = self._clock_resource_dict[ch]
-                rx = int(x_center - total_w // 2 + i * digit_w)
-                self._backend.draw_image(path, (rx, y_center, int(digit_w), self._clock_resource_height))
-        else:
-            self._calibration_preparing = False
-            self._phase_calibration = True
-
-    def _draw_validation_preparing(self):
-        self._draw_text_center(self.config.instruction_enter_validation)
-
-    # ------------------- 事件处理（根据后端分支） -------------------
-    def _process_events(self):
-        """统一事件处理，返回用户操作标识"""
-        continue_flag = False
-        recalibrate_flag = False
-        quit_flag = False
-
-        if self._is_pygame_backend:
-            import pygame
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    quit_flag = True
-                elif event.type == pygame.KEYUP:
-                    if event.key == pygame.K_RETURN:
-                        continue_flag = True
-                    elif event.key == pygame.K_r:
-                        recalibrate_flag = True
-                    elif event.key == pygame.K_q:
-                        quit_flag = True
-                elif event.type == pygame.MOUSEBUTTONUP:
-                    if event.button == 1:
-                        continue_flag = True
-                    elif event.button == 3:
-                        recalibrate_flag = True
-        else:
-            # psychoPy 后端
-            from psychopy import event
-            keys = event.getKeys(keyList=['return', 'r', 'q'])
-            if 'return' in keys:
-                continue_flag = True
-            if 'r' in keys:
-                recalibrate_flag = True
-            if 'q' in keys:
-                quit_flag = True
-            # 鼠标检测：可通过 backend 的 mouse 对象
-            mouse = self._backend.mouse
-            if mouse.getPressed()[0]:  # 左键
-                continue_flag = True
-            if mouse.getPressed()[2]:  # 右键
-                recalibrate_flag = True
-
-        return continue_flag, recalibrate_flag, quit_flag
-
-    # ------------------- 公开方法 -------------------
-    def draw(self, validate=False, bg_color=(255, 255, 255)):
+        Args:
+            validate (bool): Whether to run validation and show the accuracy report.
+            bg_color (tuple): Background colour as RGB 0-255.
+            hands_free (bool): When True, phases advance on timers rather than waiting for
+                participant input.
+        """
         self._pupil_io._recalibration()
         self.initialize_variables()
+        self._hands_free = hands_free
         self._need_validation = validate
+        self._clear_pending_input()
 
         while not self._exit:
-            # 背景填充：使用全屏矩形
-            self._backend.before_draw()
-            self._backend.draw_rect((0, 0, self._screen_width, self._screen_height), bg_color, 0)
+            self.ui.before_draw(bg_color)
 
-            # 状态机绘制
-            if self._phase_adjust_position:
-                if self.config.face_previewing:
-                    self._draw_previewer()
-                self._draw_adjust_position()
-            elif self._calibration_preparing:
-                self._draw_calibration_preparing()
-            elif self._phase_calibration:
-                self._draw_calibration_point()
-            elif self._validation_preparing:
-                self._draw_validation_preparing()
-            elif self._phase_validation:
-                self._draw_validation_point()
-            else:
-                self.graphics_finished = True
-                break
-
-            self._backend.after_draw()
-
-            # 事件处理
-            cont, recali, quit_ = self._process_events()
-            if quit_:
+            action = self.ui.check_action()
+            if action == 'quit':
                 self._exit = True
-            if cont:
+            elif action == 'continue':
                 if self._phase_adjust_position:
                     self._phase_adjust_position = False
                     self._calibration_preparing = True
+                    self._clear_pending_input()
                 elif self._calibration_preparing:
                     self._calibration_preparing = False
                     self._phase_calibration = True
-                    if self.config.calibration_listener:
+                    if hasattr(self.config, 'calibration_listener') and self.config.calibration_listener:
                         self.config.calibration_listener.on_calibration_target_onset(self._calibration_point_index)
+                elif self._phase_calibration_failed:
+                    # Accept the imperfect calibration and carry on.
+                    self._finish_calibration()
                 elif self._validation_preparing:
                     self._validation_preparing = False
                     self._phase_validation = True
                 elif self._phase_validation and self._drawing_validation_result:
                     self._phase_validation = False
-            if recali and self._drawing_validation_result:
+            elif action == 'recali' and (self._drawing_validation_result or self._phase_calibration_failed):
                 self._phase_validation = False
                 self._drawing_validation_result = False
-                self.draw(self._need_validation, bg_color=bg_color)
+                self._phase_calibration_failed = False
+                self.draw(self._need_validation, bg_color, self._hands_free)
+                return
 
-        self._backend.stop_sound("beep")
-
-    def draw_hands_free(self, validate=False, bg_color=(255, 255, 255)):
-        self.initialize_variables()
-        self._need_validation = validate
-        self._hands_free = True
-        self._preparing_hands_free_start = 0
-
-        while not self._exit:
-            self._backend.before_draw()
-            self._backend.draw_rect((0, 0, self._screen_width, self._screen_height), bg_color, 0)
-
-            if self._phase_calibration:
-                self._draw_calibration_point()
-            elif self._calibration_preparing:
-                self._draw_calibration_preparing_hands_free()
-            elif self._phase_adjust_position:
+            if self._phase_adjust_position:
+                if self.config.face_previewing:
+                    self._draw_previewer()
                 self._draw_adjust_position()
+            elif self._calibration_preparing:
+                self._draw_text_center(self.config.instruction_enter_calibration)
+            elif self._phase_calibration:
+                self._draw_calibration_point()
+            elif self._phase_calibration_failed:
+                self._draw_calibration_failed()
+            elif self._validation_preparing:
+                self._draw_text_center(self.config.instruction_enter_validation)
             elif self._phase_validation:
                 self._draw_validation_point()
             else:
-                self.graphics_finished = True
-                break
+                self._exit = True
 
-            self._backend.after_draw()
+            self.ui.after_draw()
 
-            # 仅检测退出键
-            if self._is_pygame_backend:
-                import pygame
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_q):
-                        self._exit = True
+        self.stop_sound(self._sound_beep)
+        self.stop_sound(self._sound_ins)
+        self.stop_sound(self._sound_pos)
+
+    def draw_hands_free(self, validate=False, bg_color=(255, 255, 255)):
+        """
+        Run the calibration routine without requiring any input from the participant.
+
+        Phases advance on timers instead of key presses or clicks, for participants who
+        cannot operate an input device.
+
+        Args:
+            validate (bool): Whether to run validation and show the accuracy report.
+            bg_color (tuple): Background colour as RGB 0-255.
+        """
+        self.draw(validate, bg_color, hands_free=True)
+
+    def _draw_validation_point(self):
+        """
+        Show the current validation target, or the accuracy report once all are done.
+
+        While targets remain, displays each for 1.5 s and stores the valid gaze samples and
+        viewing distances collected during that window. Once the list is exhausted, the
+        first pass hands off to :meth:`_repeat_calibration_point` to re-run any target that
+        failed its accuracy threshold; the second pass draws the report, showing per-eye
+        error in degrees and a line from each target to the measured gaze position.
+        """
+        if not self._calibration_drawing_list:
+            if self._n_validation == 1:
+                self._repeat_calibration_point()
             else:
-                from psychopy import event
-                if 'q' in event.getKeys():
-                    self._exit = True
+                if self._hands_free and not self._validation_finished_timer:
+                    self._validation_finished_timer = time.time()
+                elif self._hands_free and (time.time() - self._validation_finished_timer > 3):
+                    self._phase_validation = False
 
-        self._backend.stop_sound("beep")
-        self._backend.stop_sound("cali_ins")
-        self._backend.stop_sound("adjust_pos")
+                # 画图和显示误差
+                for idx in range(len(self._validation_points)):
+                    gt_pt = self._validation_points[idx]
+
+                    if self._pupil_io.config.active_eye in [-1, 'left', 0, 'bino']:
+                        res = self._calculator.calculate_error_by_sliding_window(
+                            gt_pt, self._validation_left_sample_store[idx],
+                            self._validation_left_eye_distance_store[idx]
+                        )
+                        if res and res["min_error"] < float('inf'):
+                            es_pt = res["min_error_es_point"]
+                            self.ui.draw_line(int(gt_pt[0]), int(gt_pt[1]), int(es_pt[0]), int(es_pt[1]), COLOR_BLACK,
+                                              1)
+                            self.ui.draw_text("+", self._font_name, 24, COLOR_CRIMSON,
+                                              (int(es_pt[0] - 10), int(es_pt[1] - 10), 20, 20))
+                            self.ui.draw_text(f"L:{res['min_error']:.2f}°", self._font_name, 20, COLOR_BLACK,
+                                              (int(gt_pt[0] - 20), int(gt_pt[1] + 20), 40, 20))
+
+                    if self._pupil_io.config.active_eye in [1, 'right', 0, 'bino']:
+                        res = self._calculator.calculate_error_by_sliding_window(
+                            gt_pt, self._validation_right_sample_store[idx],
+                            self._validation_right_eye_distance_store[idx]
+                        )
+                        if res and res["min_error"] < float('inf'):
+                            es_pt = res["min_error_es_point"]
+                            self.ui.draw_line(int(gt_pt[0]), int(gt_pt[1]), int(es_pt[0]), int(es_pt[1]), COLOR_BLACK,
+                                              1)
+                            self.ui.draw_text("+", self._font_name, 24, COLOR_CORAL,
+                                              (int(es_pt[0] - 10), int(es_pt[1] - 10), 20, 20))
+                            self.ui.draw_text(f"R:{res['min_error']:.2f}°", self._font_name, 20, COLOR_BLACK,
+                                              (int(gt_pt[0] - 20), int(gt_pt[1] + 40), 40, 20))
+
+                    self.ui.draw_text("+", self._font_name, 24, COLOR_GREEN,
+                                      (int(gt_pt[0] - 10), int(gt_pt[1] - 10), 20, 20))
+
+                if not self._drawing_validation_result:
+                    self._clear_pending_input()
+                self._drawing_validation_result = True
+        else:
+            if self._validation_timer == 0:
+                self.stop_sound(self._sound_beep)
+                self.play_sound(self._sound_beep)
+                self._validation_timer = time.time()
+
+            time_elapsed = time.time() - self._validation_timer
+            if time_elapsed > 1.5:
+                self._calibration_drawing_list.pop()
+                self._validation_timer = 0
+                if not self._calibration_drawing_list:
+                    self._n_validation += 1
+                self.stop_sound(self._sound_beep)
+            else:
+                idx = self._calibration_drawing_list[-1]
+                pt = self._validation_points[idx]
+                _status, _l_samp, _r_samp, _, _, _ = self._pupil_io.estimate_gaze()
+
+                # 绘制靶点动画
+                anim_idx = int(time_elapsed // (1 / (self.config.cali_target_animation_frequency * 10))) % 20
+                anim_idx = anim_idx if anim_idx < 10 else 19 - anim_idx
+                _max, _min = self.config.cali_target_img_maximum_size, self.config.cali_target_img_minimum_size
+                size = int(_min + (_max - _min) * anim_idx / 9)
+                self.ui.draw_image(self.config.cali_target_img,
+                                   (int(pt[0] - size // 2), int(pt[1] - size // 2), size, size))
+
+                if _l_samp[13] == 1:
+                    self._validation_left_sample_store[idx].append([_l_samp[0], _l_samp[1]])
+                    self._validation_left_eye_distance_store[idx].append(math.fabs(_l_samp[5]) / 10)
+                if _r_samp[13] == 1:
+                    self._validation_right_sample_store[idx].append([_r_samp[0], _r_samp[1]])
+                    self._validation_right_eye_distance_store[idx].append(math.fabs(_r_samp[5]) / 10)
 
     def _repeat_calibration_point(self):
+        """
+        Queue validation targets that need a second attempt.
+
+        A target is repeated when a tracked eye collected too few samples or its error
+        exceeds ``_error_threshold`` degrees, which usually means a blink or a look away
+        rather than a genuinely bad calibration. Repeated targets have their stored samples
+        cleared first. When nothing needs repeating, validation is marked complete so the
+        report can be drawn.
+        """
         for idx in range(len(self._validation_points)):
-            _left_samples = self._validation_left_sample_store[idx]
-            _right_samples = self._validation_right_sample_store[idx]
+            l_sam, r_sam = self._validation_left_sample_store[idx], self._validation_right_sample_store[idx]
+            trk_l = self._pupil_io.config.active_eye in [-1, 'left', 0, 'bino']
+            trk_r = self._pupil_io.config.active_eye in [1, 'right', 0, 'bino']
 
-            _tracking_left = self._pupil_io.config.active_eye in [-1, 'left', 0, 'bino']
-            _tracking_right = self._pupil_io.config.active_eye in [1, 'right', 0, 'bino']
-
-            # 如果左右眼任意一侧样本数量不足，直接将该点重新加入校准列表
-            if (len(_left_samples) <= 5 and _tracking_left) or (
-                    len(_right_samples) <= 5 and _tracking_right):
-                self._validation_left_sample_store[idx] = []
-                self._validation_left_eye_distance_store[idx] = []
-                self._validation_right_sample_store[idx] = []
-                self._validation_right_eye_distance_store[idx] = []
-                self._calibration_drawing_list.append(idx)
+            needs_repeat = False
+            if (len(l_sam) <= 5 and trk_l) or (len(r_sam) <= 5 and trk_r):
+                needs_repeat = True
             else:
-                _left_eye_distances = self._validation_left_eye_distance_store[idx]
-                _right_eye_distances = self._validation_right_eye_distance_store[idx]
-                _ground_truth_point = self._validation_points[idx]
-
-                if _tracking_left:
-                    _left_res = self._calculator.calculate_error_by_sliding_window(
-                        gt_point=_ground_truth_point,
-                        es_points=_left_samples,
-                        distances=_left_eye_distances
+                if trk_l:
+                    res = self._calculator.calculate_error_by_sliding_window(
+                        self._validation_points[idx], l_sam, self._validation_left_eye_distance_store[idx]
                     )
-                    if _left_res["min_error"] > self._error_threshold:
-                        logging.info(f"Recalibration point index: {idx}, Left error: {_left_res['min_error']}")
-                        # 清空该点数据并重新校准
-                        self._validation_left_eye_distance_store[idx] = []
-                        self._validation_left_sample_store[idx] = []
-                        self._validation_right_eye_distance_store[idx] = []
-                        self._validation_right_sample_store[idx] = []
-                        self._calibration_drawing_list.append(idx)
-
-                if _tracking_right:
-                    _right_res = self._calculator.calculate_error_by_sliding_window(
-                        gt_point=_ground_truth_point,
-                        es_points=_right_samples,
-                        distances=_right_eye_distances
+                    if res["min_error"] > self._error_threshold: needs_repeat = True
+                if trk_r:
+                    res = self._calculator.calculate_error_by_sliding_window(
+                        self._validation_points[idx], r_sam, self._validation_right_eye_distance_store[idx]
                     )
-                    if _right_res["min_error"] > self._error_threshold:
-                        logging.info(f"Recalibration point index: {idx}, Right error: {_right_res['min_error']}")
-                        # 清空该点数据并重新校准
-                        self._validation_left_eye_distance_store[idx] = []
-                        self._validation_left_sample_store[idx] = []
-                        self._validation_right_eye_distance_store[idx] = []
-                        self._validation_right_sample_store[idx] = []
-                        self._calibration_drawing_list.append(idx)
+                    if res["min_error"] > self._error_threshold: needs_repeat = True
 
-        # 如果不需要重复任何点，则直接结束验证（设置 _n_validation = 2 以退出外层循环）
+            if needs_repeat:
+                self._validation_left_sample_store[idx].clear()
+                self._validation_left_eye_distance_store[idx].clear()
+                self._validation_right_sample_store[idx].clear()
+                self._validation_right_eye_distance_store[idx].clear()
+                self._calibration_drawing_list.append(idx)
+
         if not self._calibration_drawing_list:
             self._n_validation = 2

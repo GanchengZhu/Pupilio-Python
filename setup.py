@@ -83,7 +83,7 @@ setup(
     },
 
     install_requires=[
-        'numpy', 'pygame', 'websockets', 'opencv-python',
+        'numpy', 'pygame', 'opencv-python',
     ],
 
     cmdclass={'build_ext': CustomBuildExt},
