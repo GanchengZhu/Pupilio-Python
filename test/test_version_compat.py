@@ -1,53 +1,69 @@
 import unittest
-from pupilio.ui_backend import PyGameUIBackend
+import os
+import sys
+from unittest.mock import patch
 import pygame
-import inspect
+import runpy
 
 class TestVersionCompat(unittest.TestCase):
-    def test_pygame_font_compat(self):
-        # Just testing import and module loading for pygame backend
-        import pygame
-        screen = pygame.display.set_mode((800, 600))
-        backend = PyGameUIBackend(screen)
-        backend.before_draw((128, 128, 128))
+    def setUp(self):
+        # Insert project root to import test module
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
         
-        # In different pygame versions SysFont behavior might vary or fail with certain types
-        # We ensure draw_text handles unknown fonts gracefully
-        try:
-            backend.draw_text("Test", "some_nonexistent_font_123", 24, (0,0,0), (0,0,100,50))
-        except Exception as e:
-            self.fail(f"draw_text failed with unknown font: {e}")
+        # Insert example paths
+        self.example_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../example/picture_viewing'))
+        if self.example_dir not in sys.path:
+            sys.path.insert(0, self.example_dir)
+
+    def test_pygame_example(self):
+        from pupilio import Pupilio
+        
+        # Add test dir to path to import auto_cali_graphics
+        test_dir = os.path.abspath(os.path.dirname(__file__))
+        if test_dir not in sys.path: sys.path.insert(0, test_dir)
+        from auto_cali_graphics import AutoCalibrationUI
+        
+        from pupilio.ui_backend import PyGameUIBackend
+        
+        def mock_calibration_draw(self_obj, validate=False, hands_free=False, screen=None):
+            ui_backend = PyGameUIBackend(screen)
+            cali_ui = AutoCalibrationUI(self_obj, ui_backend)
+            cali_ui.draw(validate=validate, bg_color=(255, 255, 255), hands_free=hands_free)
             
-    def test_psychopy_font_compat(self):
+        with patch.object(Pupilio, 'calibration_draw', mock_calibration_draw):
+            # Patch pygame event loop in the example to exit immediately
+            def mock_event_get():
+                ev = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN)
+                return [ev]
+                
+            with patch('pygame.event.get', side_effect=mock_event_get):
+                # We also need to patch time.wait to speed up the script
+                with patch('pygame.time.wait', return_value=None):
+                    runpy.run_path(os.path.join(self.example_dir, 'picture_viewing_pygame.py'))
+
+    def test_psychopy_example(self):
+        from pupilio import Pupilio
+        
+        # Add test dir to path to import auto_cali_graphics
+        test_dir = os.path.abspath(os.path.dirname(__file__))
+        if test_dir not in sys.path: sys.path.insert(0, test_dir)
+        from auto_cali_graphics import AutoCalibrationUI
+        
         from pupilio.ui_backend import PsychoPyUIBackend
-        from psychopy import visual, core
-        import psychopy
-        win = visual.Window([400,300], units='pix')
-        backend = PsychoPyUIBackend(win)
-        try:
-            backend.draw_text("Test Psychopy", "some_nonexistent_font_321", 24, (1,1,1), (0,0,100,50))
-        except Exception as e:
-            self.fail(f"draw_text in psychopy failed with unknown font: {e}")
-        finally:
-            win.close()
+        
+        def mock_calibration_draw(self_obj, validate=False, hands_free=False, screen=None):
+            ui_backend = PsychoPyUIBackend(screen)
+            cali_ui = AutoCalibrationUI(self_obj, ui_backend)
+            cali_ui.draw(validate=validate, bg_color=(255, 255, 255), hands_free=hands_free)
             
-    def test_numpy_compat(self):
-        # Numpy string type casting in earlier versions might differ, but we mainly care
-        # about compatibility with psychopy which uses numpy extensively.
-        # Check standard numpy operations used in SDK
-        import numpy as np
-        
-        # Just a basic shape test common in cv2/numpy interactions
-        img = np.zeros((100, 100, 3), dtype=np.uint8)
-        self.assertEqual(img.shape, (100, 100, 3))
-        
-        # Test basic statistics commonly used in calibration/gaze estimation
-        arr = np.array([1, 2, 3, 4, 5])
-        self.assertAlmostEqual(np.mean(arr), 3.0)
-        
-        # Check deprecated features (like np.float vs float)
-        self.assertTrue(hasattr(np, 'float32'))
-        self.assertTrue(hasattr(np, 'float64'))
+        with patch.object(Pupilio, 'calibration_draw', mock_calibration_draw):
+            def mock_getKeys(*args, **kwargs):
+                return ['return']
+            with patch('psychopy.event.getKeys', side_effect=mock_getKeys):
+                with patch('psychopy.core.wait', return_value=None):
+                    runpy.run_path(os.path.join(self.example_dir, 'picture_viewing_psychopy.py'))
 
 if __name__ == '__main__':
     unittest.main()

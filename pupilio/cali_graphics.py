@@ -420,6 +420,9 @@ class CalibrationUI:
                 elif self._phase_validation and self._drawing_validation_result:
                     self._phase_validation = False
                     self._clear_pending_input()
+            elif action == 'toggle_preview':
+                if self._phase_adjust_position:
+                    self.config.face_previewing = not getattr(self.config, 'face_previewing', True)
             elif action == 'recali' and (self._drawing_validation_result or self._phase_calibration_failed):
                 self._phase_validation = False
                 self._drawing_validation_result = False

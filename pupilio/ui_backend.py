@@ -294,16 +294,26 @@ class PsychoPyUIBackend(UIBackend):
         self.win.flip()
 
     def check_action(self):
-        keys = self.event.getKeys(keyList=['return', 'r', 'q', 'escape'])
+        keys = self.event.getKeys(keyList=['return', 'space', 'r', 'q', 'escape', 'p'])
         if 'q' in keys or 'escape' in keys: return 'quit'
-        if 'return' in keys: return 'continue'
+        if 'return' in keys or 'space' in keys: return 'continue'
         if 'r' in keys: return 'recali'
+        if 'p' in keys: return 'toggle_preview'
 
         mouse_pressed = self.mouse.getPressed()
-        if mouse_pressed[0]:
+        
+        # Edge detection for mouse clicks (getPressed returns continuous state)
+        if not hasattr(self, '_last_mouse_pressed'):
+            self._last_mouse_pressed = [0, 0, 0]
+            
+        clicked_left = mouse_pressed[0] and not self._last_mouse_pressed[0]
+        clicked_right = mouse_pressed[2] and not self._last_mouse_pressed[2]
+        self._last_mouse_pressed = list(mouse_pressed)
+
+        if clicked_left:
             self.event.clearEvents()
             return 'continue'
-        if mouse_pressed[2]:
+        if clicked_right:
             self.event.clearEvents()
             return 'recali'
         return None
@@ -436,8 +446,9 @@ class PyGameUIBackend(UIBackend):
                 return 'quit'
             if event.type == self.pygame.KEYDOWN:
                 if event.key in [self.pygame.K_q, self.pygame.K_ESCAPE]: return 'quit'
-                if event.key == self.pygame.K_RETURN: return 'continue'
+                if event.key in [self.pygame.K_RETURN, self.pygame.K_SPACE]: return 'continue'
                 if event.key == self.pygame.K_r: return 'recali'
+                if event.key == self.pygame.K_p: return 'toggle_preview'
             if event.type == self.pygame.MOUSEBUTTONUP:
                 if event.button == 1: return 'continue'  # 左键
                 if event.button == 3: return 'recali'  # 右键
