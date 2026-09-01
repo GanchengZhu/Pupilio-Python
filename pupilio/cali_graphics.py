@@ -392,6 +392,8 @@ class CalibrationUI:
         self._need_validation = validate
         self._clear_pending_input()
 
+        self.ui.set_mouse_visible(getattr(self.config, 'simulation_mode', 0) == 1)
+
         while not self._exit:
             self.ui.before_draw(bg_color)
 
@@ -448,6 +450,9 @@ class CalibrationUI:
                 self._exit = True
 
             self.ui.after_draw()
+
+        # Restore mouse visibility when exiting the calibration UI
+        self.ui.set_mouse_visible(True)
 
         self.stop_sound(self._sound_beep)
         self.stop_sound(self._sound_ins)

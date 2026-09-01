@@ -143,6 +143,12 @@ class UIBackend:
         """
         raise NotImplementedError
 
+    def set_mouse_visible(self, visible):
+        """
+        Set whether the OS mouse cursor should be visible.
+        """
+        raise NotImplementedError
+
 
 class PsychoPyUIBackend(UIBackend):
     """
@@ -322,6 +328,12 @@ class PsychoPyUIBackend(UIBackend):
         self.event.clearEvents()
         self.mouse.clickReset()
 
+    def set_mouse_visible(self, visible):
+        try:
+            self.mouse.setVisible(visible)
+        except Exception:
+            pass
+
 
 class PyGameUIBackend(UIBackend):
     """
@@ -456,3 +468,9 @@ class PyGameUIBackend(UIBackend):
 
     def clear_events(self):
         self.pygame.event.clear()
+
+    def set_mouse_visible(self, visible):
+        try:
+            self.pygame.mouse.set_visible(visible)
+        except Exception:
+            pass
