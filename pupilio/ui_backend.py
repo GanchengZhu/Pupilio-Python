@@ -4,6 +4,8 @@
 # encoding=utf-8
 
 from typing import Tuple
+
+import cv2
 import numpy as np
 import platform
 
@@ -224,6 +226,8 @@ class PsychoPyUIBackend(UIBackend):
             self.texture_cache[rect] = stim
         else:
             stim = self.texture_cache[rect]
+        img = cv2.rotate(img, cv2.ROTATE_180)
+        img = cv2.flip(img, 1)
         # PsychoPy colorSpace='rgb' 需要将 0-255 转为 -1.0 到 1.0
         norm_img = (img / 127.5) - 1.0
         stim.tex = norm_img

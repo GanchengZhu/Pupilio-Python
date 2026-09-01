@@ -260,10 +260,12 @@ class CalibrationUI:
         """
         _left_img, _right_img = self._pupil_io.get_preview_images()
         import cv2
-        _left_img = cv2.rotate(cv2.resize(_left_img, (512, 512)), cv2.ROTATE_90_COUNTERCLOCKWISE)
-        _right_img = cv2.rotate(cv2.resize(_right_img, (512, 512)), cv2.ROTATE_90_COUNTERCLOCKWISE)
-        _left_img = cv2.flip(_left_img, 0)
-        _right_img = cv2.flip(_right_img, 0)
+        _left_img = cv2.resize(_left_img, (512, 512))
+        _right_img = cv2.resize(_right_img, (512, 512))
+        # _left_img = cv2.rotate(cv2.resize(_left_img, (512, 512)), cv2.ROTATE_180)
+        # _right_img = cv2.rotate(cv2.resize(_right_img, (512, 512)), cv2.ROTATE_180)
+        # _left_img = cv2.flip(_left_img, 0)
+        # _right_img = cv2.flip(_right_img, 0)
 
         cy = self._screen_height // 2
         # 左眼
