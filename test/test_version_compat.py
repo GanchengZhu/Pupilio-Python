@@ -41,7 +41,12 @@ class TestVersionCompat(unittest.TestCase):
             with patch('pygame.event.get', side_effect=mock_event_get):
                 # We also need to patch time.wait to speed up the script
                 with patch('pygame.time.wait', return_value=None):
-                    runpy.run_path(os.path.join(self.example_dir, 'picture_viewing_pygame.py'))
+                    old_cwd = os.getcwd()
+                    os.chdir(self.example_dir)
+                    try:
+                        runpy.run_path('picture_viewing_pygame.py')
+                    finally:
+                        os.chdir(old_cwd)
 
     def test_psychopy_example(self):
         from pupilio import Pupilio
@@ -63,7 +68,12 @@ class TestVersionCompat(unittest.TestCase):
                 return ['return']
             with patch('psychopy.event.getKeys', side_effect=mock_getKeys):
                 with patch('psychopy.core.wait', return_value=None):
-                    runpy.run_path(os.path.join(self.example_dir, 'picture_viewing_psychopy.py'))
+                    old_cwd = os.getcwd()
+                    os.chdir(self.example_dir)
+                    try:
+                        runpy.run_path('picture_viewing_psychopy.py')
+                    finally:
+                        os.chdir(old_cwd)
 
 if __name__ == '__main__':
     unittest.main()
