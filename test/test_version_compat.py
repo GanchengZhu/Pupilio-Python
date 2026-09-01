@@ -72,6 +72,9 @@ class TestVersionCompat(unittest.TestCase):
                     os.chdir(self.example_dir)
                     try:
                         runpy.run_path('picture_viewing_psychopy.py')
+                    except SystemExit as e:
+                        if e.code != 0:
+                            raise e
                     finally:
                         os.chdir(old_cwd)
 
