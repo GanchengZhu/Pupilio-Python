@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python --version)",
+      "PowerShell(python -m pip show pytest 2>&1)"
+    ]
+  }
+}

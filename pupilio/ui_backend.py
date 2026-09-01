@@ -246,9 +246,39 @@ class PsychoPyUIBackend(UIBackend):
         self.text_stim.font = font_name
         self.text_stim.height = font_size
         self.text_stim.color = text_color
-        self.text_stim.pos = self.pixel_to_psychopy_coordinate(rect[0] + rect[2] // 2, rect[1] + rect[3] // 2)
-        self.text_stim.alignHoriz = align
-        self.text_stim.draw()
+        
+        if align == 'left' or align == 'left-top':
+            p_x = rect[0]
+            p_y = rect[1] + rect[3] // 2
+            if align == 'left-top':
+                p_y = rect[1]
+                if hasattr(self.text_stim, 'anchorVert'):
+                     self.text_stim.anchorVert = 'top'
+        elif align == 'right':
+            p_x = rect[0] + rect[2]
+            p_y = rect[1] + rect[3] // 2
+        else:
+            p_x = rect[0] + rect[2] // 2
+            p_y = rect[1] + rect[3] // 2
+            
+        self.text_stim.pos = self.pixel_to_psychopy_coordinate(p_x, p_y)
+        
+        if hasattr(self.text_stim, 'anchorHoriz'):
+            self.text_stim.anchorHoriz = 'left' if align in ['left', 'left-top'] else align
+        if hasattr(self.text_stim, 'alignText'):
+            self.text_stim.alignText = 'left' if align in ['left', 'left-top'] else 'center'
+        if hasattr(self.text_stim, 'alignHoriz'):    
+            self.text_stim.alignHoriz = 'left' if align in ['left', 'left-top'] else align
+            
+        try:
+            self.text_stim.draw()
+        except Exception:
+            # Fallback to default font if the specified font fails
+            self.text_stim.font = "Arial"
+            try:
+                self.text_stim.draw()
+            except Exception:
+                pass # Last resort, ignore if still fails
 
     def get_screen_size(self):
         return self.win.size
@@ -339,13 +369,47 @@ class PyGameUIBackend(UIBackend):
     def draw_rect(self, rect, color, line_width):
         self.pygame.draw.rect(self.win, color, rect, line_width)
 
-    def draw_text(self, text, font_name, font_size, text_color, rect, align='center'):
+    def _get_font(self, font_name, font_size):
         try:
             font = self.pygame.font.SysFont(font_name, font_size)
+            if font:
+                return font
         except Exception:
-            font = self.pygame.font.Font(None, font_size)
+            pass
+        
+        # Fallback to direct Windows font paths if on Windows
+        import platform, os
+        if platform.system().lower() == 'windows':
+            windir = os.environ.get('WINDIR', 'C:\\Windows')
+            font_paths = [
+                os.path.join(windir, 'Fonts', 'msyh.ttc'),
+                os.path.join(windir, 'Fonts', 'msyh.ttf'),
+                os.path.join(windir, 'Fonts', 'simhei.ttf'),
+                os.path.join(windir, 'Fonts', 'simsun.ttc'),
+                os.path.join(windir, 'Fonts', 'msgothic.ttc'),
+                os.path.join(windir, 'Fonts', 'malgun.ttf')
+            ]
+            for fp in font_paths:
+                if os.path.exists(fp):
+                    try:
+                        return self.pygame.font.Font(fp, font_size)
+                    except Exception:
+                        pass
+                        
+        return self.pygame.font.Font(None, font_size)
 
-        text_surface = font.render(text, True, text_color)
+    def draw_text(self, text, font_name, font_size, text_color, rect, align='center'):
+        font = self._get_font(font_name, font_size)
+            
+        try:
+            text_surface = font.render(text, True, text_color)
+        except Exception:
+            try:
+                # If rendering fails (e.g. for some missing characters), try default font
+                font = self.pygame.font.Font(None, font_size)
+                text_surface = font.render(text, True, text_color)
+            except Exception:
+                return # Give up if even default font rendering fails
         text_rect = text_surface.get_rect()
 
         if align == 'center':

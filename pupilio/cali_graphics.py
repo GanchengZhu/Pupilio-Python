@@ -343,8 +343,6 @@ class CalibrationUI:
             else:
                 self._calibration_point_index += 1
                 self._calibration_timer = 0
-                self.stop_sound(self._sound_beep)
-                self.play_sound(self._sound_beep)
                 if hasattr(self.config, 'calibration_listener') and self.config.calibration_listener:
                     self.config.calibration_listener.on_calibration_target_onset(self._calibration_point_index)
         elif _status == ET_ReturnCode.ET_SUCCESS.value:
@@ -408,16 +406,20 @@ class CalibrationUI:
                 elif self._calibration_preparing:
                     self._calibration_preparing = False
                     self._phase_calibration = True
+                    self._clear_pending_input()
                     if hasattr(self.config, 'calibration_listener') and self.config.calibration_listener:
                         self.config.calibration_listener.on_calibration_target_onset(self._calibration_point_index)
                 elif self._phase_calibration_failed:
                     # Accept the imperfect calibration and carry on.
+                    self._clear_pending_input()
                     self._finish_calibration()
                 elif self._validation_preparing:
                     self._validation_preparing = False
                     self._phase_validation = True
+                    self._clear_pending_input()
                 elif self._phase_validation and self._drawing_validation_result:
                     self._phase_validation = False
+                    self._clear_pending_input()
             elif action == 'recali' and (self._drawing_validation_result or self._phase_calibration_failed):
                 self._phase_validation = False
                 self._drawing_validation_result = False
@@ -461,6 +463,84 @@ class CalibrationUI:
         """
         self.draw(validate, bg_color, hands_free=True)
 
+    def _draw_error_line(self, ground_truth_point, estimated_point, error_color):
+        if estimated_point is None:
+            return
+            
+        gt_x, gt_y = int(ground_truth_point[0]), int(ground_truth_point[1])
+        es_x, es_y = int(estimated_point[0]), int(estimated_point[1])
+        
+        self.ui.draw_text("+", self._font_name, 32, COLOR_GREEN, (gt_x - 20, gt_y - 20, 40, 40))
+        self.ui.draw_text("+", self._font_name, 32, error_color, (es_x - 20, es_y - 20, 40, 40))
+        self.ui.draw_line(gt_x, gt_y, es_x, es_y, COLOR_BLACK, 1)
+
+    def _draw_error_text(self, min_error, ground_truth_point, is_left=True):
+        error_degrees = min_error
+        height_position = 1
+        if is_left:
+            error_text = f"L: {error_degrees:.2f}°"
+        else:
+            error_text = f"R: {error_degrees:.2f}°"
+            height_position += 1
+            
+        gt_x, gt_y = int(ground_truth_point[0]), int(ground_truth_point[1])
+        
+        text_h = 24
+        y_offset = text_h * height_position
+        
+        self.ui.draw_text(error_text, self._font_name, 20, COLOR_BLACK, (gt_x - 100, gt_y + y_offset - 10, 200, 20))
+
+    def _draw_recali_and_continue_tips(self):
+        legend_texts = [
+            getattr(self.config, 'instruction_calibration_over', "Press 'Enter' to continue"),
+            getattr(self.config, 'instruction_recalibration', "Press 'R' to recalibrate")
+        ]
+        
+        lang = getattr(self.config, '_lang', 'en-US')
+        
+        if 'en-' in lang:
+            x = self._screen_width - 600
+            y = self._screen_height - 96
+        elif "zh-" in lang:
+            x = self._screen_width - 464
+            y = self._screen_height - 96
+        elif "jp-" in lang:
+            x = self._screen_width - 712
+            y = self._screen_height - 96
+        elif "ko-" in lang:
+            x = self._screen_width - 464
+            y = self._screen_height - 96
+        elif 'fr-' in lang:
+            x = self._screen_width - 715
+            y = self._screen_height - 96
+        elif 'es-' in lang:
+            x = self._screen_width - 512
+            y = self._screen_height - 144
+        else:
+            x = self._screen_width - 600
+            y = self._screen_height - 96
+            
+        for content in legend_texts:
+            for split_text in content.split("\n"):
+                self.ui.draw_text(split_text, self._font_name, 20, COLOR_BLACK, (x, y - 10, 800, 20), align='left')
+                y += 20 + 3
+
+    def _draw_legend(self):
+        legend_texts = [
+            getattr(self.config, 'legend_target', "Target"), 
+            getattr(self.config, 'legend_left_eye', "Left Eye"), 
+            getattr(self.config, 'legend_right_eye', "Right Eye")
+        ]
+        color_list = [COLOR_GREEN, COLOR_CRIMSON, COLOR_CORAL]
+        x = 128
+        y = self._screen_height - 128
+
+        for n, content in enumerate(legend_texts):
+            self.ui.draw_text("+", self._font_name, 20, color_list[n], (x - 10, y - 10, 20, 20))
+            _x = x + 15
+            self.ui.draw_text(content, self._font_name, 20, COLOR_BLACK, (_x, y - 10, 400, 20), align='left')
+            y += 20 + 3
+
     def _draw_validation_point(self):
         """
         Show the current validation target, or the accuracy report once all are done.
@@ -490,13 +570,8 @@ class CalibrationUI:
                             self._validation_left_eye_distance_store[idx]
                         )
                         if res and res["min_error"] < float('inf'):
-                            es_pt = res["min_error_es_point"]
-                            self.ui.draw_line(int(gt_pt[0]), int(gt_pt[1]), int(es_pt[0]), int(es_pt[1]), COLOR_BLACK,
-                                              1)
-                            self.ui.draw_text("+", self._font_name, 24, COLOR_CRIMSON,
-                                              (int(es_pt[0] - 10), int(es_pt[1] - 10), 20, 20))
-                            self.ui.draw_text(f"L:{res['min_error']:.2f}°", self._font_name, 20, COLOR_BLACK,
-                                              (int(gt_pt[0] - 20), int(gt_pt[1] + 20), 40, 20))
+                            self._draw_error_line(gt_pt, res["min_error_es_point"], COLOR_CRIMSON)
+                            self._draw_error_text(res["min_error"], gt_pt, is_left=True)
 
                     if self._pupil_io.config.active_eye in [1, 'right', 0, 'bino']:
                         res = self._calculator.calculate_error_by_sliding_window(
@@ -504,16 +579,11 @@ class CalibrationUI:
                             self._validation_right_eye_distance_store[idx]
                         )
                         if res and res["min_error"] < float('inf'):
-                            es_pt = res["min_error_es_point"]
-                            self.ui.draw_line(int(gt_pt[0]), int(gt_pt[1]), int(es_pt[0]), int(es_pt[1]), COLOR_BLACK,
-                                              1)
-                            self.ui.draw_text("+", self._font_name, 24, COLOR_CORAL,
-                                              (int(es_pt[0] - 10), int(es_pt[1] - 10), 20, 20))
-                            self.ui.draw_text(f"R:{res['min_error']:.2f}°", self._font_name, 20, COLOR_BLACK,
-                                              (int(gt_pt[0] - 20), int(gt_pt[1] + 40), 40, 20))
+                            self._draw_error_line(gt_pt, res["min_error_es_point"], COLOR_CORAL)
+                            self._draw_error_text(res["min_error"], gt_pt, is_left=False)
 
-                    self.ui.draw_text("+", self._font_name, 24, COLOR_GREEN,
-                                      (int(gt_pt[0] - 10), int(gt_pt[1] - 10), 20, 20))
+                self._draw_legend()
+                self._draw_recali_and_continue_tips()
 
                 if not self._drawing_validation_result:
                     self._clear_pending_input()

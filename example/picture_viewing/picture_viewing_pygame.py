@@ -71,7 +71,7 @@ config.cali_mode = 4
 # config.cali_mode = CalibrationMode.FOUR_POINTS
 
 # Run the script in gaze simulation mode, i.e., any Windows computer; here we set it to 0
-config.simulation_mode = 0
+config.simulation_mode = 1
 
 # ---- Instantiate tracker object and create a session ----
 # instantiate a tracker object
@@ -83,7 +83,7 @@ pupil_io.create_session(session_name="deepgaze_demo")
 
 # ---- Calibrate and validate ----
 # set 'validate' to True if you would like to verify the calibration results
-pupil_io.calibration_draw(validate=False, hands_free=False, screen=win)
+pupil_io.calibration_draw(validate=True, hands_free=False, screen=win)
 
 # ---- Start retrieving gaze data ----
 # start retrieving gaze
