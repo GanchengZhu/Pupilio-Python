@@ -15,7 +15,7 @@ jobs:
         python-version: ["3.9", "3.10"]
         pygame-version: ["pygame==2.5.2", "pygame==2.6.0"]
         psychopy-version: ["PsychoPy==2024.1.2", "PsychoPy==2023.2.3"]
-        numpy-version: ["numpy==1.23.5", "numpy==1.26.4"]
+        numpy-version: ["numpy==1.23.5", "numpy==1.26.4", "numpy>=2.0.0"]
 
     steps:
     - uses: actions/checkout@v4
