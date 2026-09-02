@@ -71,10 +71,16 @@ class CalibrationUI:
         self.config = self._pupil_io.config
 
         # --- 声音系统完全依赖 pygame，确保跨端行为一致 ---
-        pygame.mixer.init()
-        self._sound_beep = pygame.mixer.Sound(self.config.cali_target_beep)
-        self._sound_ins = pygame.mixer.Sound(self.config.calibration_instruction_sound_path)
-        self._sound_pos = pygame.mixer.Sound(os.path.join(self.config._current_dir, "asset", "adjust_position.wav"))
+        try:
+            pygame.mixer.init()
+            self._sound_beep = pygame.mixer.Sound(self.config.cali_target_beep)
+            self._sound_ins = pygame.mixer.Sound(self.config.calibration_instruction_sound_path)
+            self._sound_pos = pygame.mixer.Sound(os.path.join(self.config._current_dir, "asset", "adjust_position.wav"))
+        except pygame.error:
+            logger.warning("Failed to initialize pygame.mixer (e.g. no audio device). Audio cues disabled.")
+            self._sound_beep = None
+            self._sound_ins = None
+            self._sound_pos = None
         self._just_pos_sound_once = False
 
         self._screen_width, self._screen_height = self.ui.get_screen_size()
@@ -143,6 +149,7 @@ class CalibrationUI:
         Args:
             snd (pygame.mixer.Sound): The cue to play.
         """
+        if snd is None: return
         try:
             snd.play()
         except Exception:
@@ -155,6 +162,7 @@ class CalibrationUI:
         Args:
             snd (pygame.mixer.Sound): The cue to stop.
         """
+        if snd is None: return
         try:
             snd.stop()
         except Exception:

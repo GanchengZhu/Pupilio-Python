@@ -49,6 +49,11 @@ class TestVersionCompat(unittest.TestCase):
                         os.chdir(old_cwd)
 
     def test_psychopy_example(self):
+        try:
+            import psychopy
+        except ImportError:
+            self.skipTest("psychopy is not installed")
+
         from pupilio import Pupilio
         
         # Add test dir to path to import auto_cali_graphics
