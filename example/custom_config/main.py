@@ -17,8 +17,8 @@ config.cali_mode = 2
 config.cali_mode = 5
 """
 
-config.cali_target_img = "target_img_path"
-config.cali_target_beep = "target_beep_path"
+config.cali_target_img = "cute_duck.png"
+config.cali_target_beep = "duck_beep.wav"
 
 pupil_io = pupilio.Pupilio(config)
 

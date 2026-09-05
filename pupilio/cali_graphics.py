@@ -1,6 +1,40 @@
+#!/usr/bin/env python
 # _*_ coding: utf-8 _*_
-# Author: GC Zhu
+
+# Copyright (c) 2026, Hangzhou DeepGaze Science and Technology Co., Ltd
+# All Rights Reserved
+#
+# For use by Hangzhou DeepGaze Science and Technology Co., Ltd customers
+# only. Redistribution and use in source and binary forms, with or without
+# modification, are NOT permitted.
+#
+# Redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in
+# the documentation and/or other materials provided with the distribution.
+#
+# Neither name of Hangzhou DeepGaze Sci & Tech Ltd nor the name of
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ``AS
+# IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+# TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+# PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+# LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+# NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# DESCRIPTION:
+# UI calibration routines
+
+# Author: Gancheng Zhu
 # Email: zhugc2016@gmail.com
+# Last updated: 6/20/2026 by Zhiguo Wang
+
 import os
 import time
 import math
@@ -182,8 +216,8 @@ class CalibrationUI:
         cx = self._screen_width // 2 + x_offset
         cy = self._screen_height // 2 + y_offset
         for t in lines:
-            self.ui.draw_text(t, self._font_name, 32, COLOR_BLACK, (cx - 400, cy + shift - 20, 800, 40))
-            shift += 40
+            self.ui.draw_text(t, self._font_name, 32, COLOR_BLACK, (cx - 400, cy + shift - 40, 800, 40))
+            shift += 64
 
     def _draw_adjust_position(self):
         """
@@ -504,7 +538,7 @@ class CalibrationUI:
         text_h = 24
         y_offset = text_h * height_position
         
-        self.ui.draw_text(error_text, self._font_name, 20, COLOR_BLACK, (gt_x - 100, gt_y + y_offset - 10, 200, 20))
+        self.ui.draw_text(error_text, self._font_name, 20, COLOR_BLACK, (gt_x - 100, gt_y + y_offset, 200, 20))
 
     def _draw_recali_and_continue_tips(self):
         legend_texts = [
@@ -515,25 +549,25 @@ class CalibrationUI:
         lang = getattr(self.config, '_lang', 'en-US')
         
         if 'en-' in lang:
-            x = self._screen_width - 600
+            x = self._screen_width - 720
             y = self._screen_height - 96
         elif "zh-" in lang:
-            x = self._screen_width - 464
+            x = self._screen_width - 720
             y = self._screen_height - 96
         elif "jp-" in lang:
-            x = self._screen_width - 712
+            x = self._screen_width - 720
             y = self._screen_height - 96
         elif "ko-" in lang:
-            x = self._screen_width - 464
+            x = self._screen_width - 720
             y = self._screen_height - 96
         elif 'fr-' in lang:
-            x = self._screen_width - 715
+            x = self._screen_width - 720
             y = self._screen_height - 96
         elif 'es-' in lang:
-            x = self._screen_width - 512
+            x = self._screen_width - 720
             y = self._screen_height - 144
         else:
-            x = self._screen_width - 600
+            x = self._screen_width - 720
             y = self._screen_height - 96
             
         for content in legend_texts:

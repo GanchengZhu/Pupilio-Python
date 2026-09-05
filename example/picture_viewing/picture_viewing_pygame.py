@@ -63,7 +63,7 @@ config.look_ahead = 4
 
 # Set the sampling rate (for models that support 400/800/1000 Hz),
 # on the 200 Hz model, sampling rate will fall back to 200 Hz
-config.sampling_rate = 400
+config.sampling_rate = 200
 
 # Set the calibration mode (2-point, 4-point, 5-point)
 config.cali_mode = 4
@@ -71,7 +71,7 @@ config.cali_mode = 4
 # config.cali_mode = CalibrationMode.FOUR_POINTS
 
 # Run the script in gaze simulation mode, i.e., any Windows computer; here we set it to 0
-config.simulation_mode = 1
+config.simulation_mode = 0
 
 # ---- Instantiate tracker object and create a session ----
 # instantiate a tracker object

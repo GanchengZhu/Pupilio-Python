@@ -39,6 +39,7 @@ import cv2
 import webview
 from psychopy import visual, core
 from pupilio import Pupilio
+from psychopy_legacy.visual.movie3 import MovieStim3
 import video_player_core_psychopy
 
 
@@ -49,7 +50,7 @@ def generate_thumbnail(video_path, thumbnail_path):
     thumbnail_path: where to save the thumbnail
     """
 
-    # open the video- file with openCV
+    # open the video file with openCV
     cap = cv2.VideoCapture(video_path)
 
     # retrieve the frame count for the video-
@@ -225,7 +226,7 @@ if __name__ == '__main__':
     vids = {}
     for _idx, _vid in enumerate(video_list):
         v_path = os.path.join("video", _vid)
-        vids[_idx] = visual.MovieStim3(win, v_path, units='pix', size=(1920, 1080), pos=(0, 0))
+        vids[_idx] = MovieStim3(win, v_path, units='pix', size=(1920, 1080), pos=(0, 0))
     fixation_stim = visual.TextStim(win, text='+', height=64, color=(-1, -1, -1), units='pix')
     # initializing the tracker
     pi = Pupilio()
