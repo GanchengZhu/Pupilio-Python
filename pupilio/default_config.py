@@ -148,7 +148,7 @@ class DefaultConfig:
         self.cali_target_img_minimum_size = 30  # Minimum size of the calibration target image
 
         # Calibration target animation frequency
-        self.cali_target_animation_frequency = 2  # Frequency of the calibration target animation (in Hz)
+        self.cali_target_animation_frequency = 3  # Frequency of the calibration target animation (in Hz)
 
         # Calibration mode (either 2 or 5)
         self.cali_mode = CalibrationMode.TWO_POINTS  # Default to TWO_POINTS calibration mode
