@@ -235,7 +235,31 @@ class CalibrationUI:
             self._just_pos_sound_once = True
 
         _status, _face_position = self._pupil_io.face_position()
-        face_mm_z = _face_position[2]
+        face_mm_z = _face_position[2] if _face_position is not None else np.nan
+
+        has_face = (
+            _face_position is not None
+            and not np.isnan(face_mm_z)
+            and not np.isnan(_face_position[0])
+            and not np.isnan(_face_position[1])
+        )
+
+        if not has_face:
+            # 绘制边界框（红色提示未就位）
+            self.ui.draw_rect((int(SCREEN_CENTER_X - BOUNDARY_R), int(SCREEN_CENTER_Y - BOUNDARY_R),
+                               int(BOUNDARY_R * 2), int(BOUNDARY_R * 2)), COLOR_RED, LINE_THICK_BOUND)
+
+            # 绘制最优圈
+            self.ui.draw_circle(SCREEN_CENTER_X, SCREEN_CENTER_Y, BEST_RANGE_R, COLOR_YELLOW, LINE_THICK_BEST)
+
+            # 提示将头移动到方框中央
+            instruction_text = self.config.instruction_head_center
+            self._draw_text_center(instruction_text, x_offset=0, y_offset=int(BEST_RANGE_R + 20))
+
+            if self._hands_free:
+                self._hands_free_start_timestamp = 0
+            return
+
         face_x_offset = 32.0 if self._pupil_io.config.active_eye in [-1, 'left'] else (
             -32.0 if self._pupil_io.config.active_eye in [1, 'right'] else 0.0)
 
@@ -260,6 +284,9 @@ class CalibrationUI:
         dy = face_px_y - SCREEN_CENTER_Y
         is_inside_bound = (np.sqrt(dx ** 2 + dy ** 2) + face_radius) <= BOUNDARY_R
 
+        if not is_inside_bound and not instruction_text:
+            instruction_text = self.config.instruction_head_center
+
         bound_color = COLOR_GREEN if is_inside_bound else COLOR_RED
 
         # 绘制边界框
@@ -267,7 +294,7 @@ class CalibrationUI:
                            int(BOUNDARY_R * 2), int(BOUNDARY_R * 2)), bound_color, LINE_THICK_BOUND)
 
         # 绘制人脸图片 (自动缩放)
-        face_img = self.config.cali_frowning_face_img if face_mm_z > Z_SAFE_MAX or face_mm_z < Z_SAFE_MIN else self.config.cali_smiling_face_img
+        face_img = self.config.cali_frowning_face_img if face_mm_z > Z_SAFE_MAX or face_mm_z < Z_SAFE_MIN or not is_inside_bound else self.config.cali_smiling_face_img
         r_size = int(face_radius * 3)
         self.ui.draw_image(face_img, (int(face_px_x - r_size // 2), int(face_px_y - r_size // 2), r_size, r_size))
 

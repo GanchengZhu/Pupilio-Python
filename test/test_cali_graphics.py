@@ -56,6 +56,9 @@ class FakeUIBackend(UIBackend):
     def get_screen_size(self):
         return self.screen_size
 
+    def set_mouse_visible(self, visible):
+        self._record("set_mouse_visible", visible)
+
     def before_draw(self, bg_color):
         self.frames += 1
         self._record("before_draw", bg_color)
@@ -252,6 +255,17 @@ class TestHandsFree:
 
         assert ui._hands_free_start_timestamp == 0
 
+    def test_nan_face_position_does_not_advance_and_resets_countdown(self, make_ui, pupil_io):
+        ui, _ = make_ui()
+        ui._hands_free = True
+        ui._hands_free_start_timestamp = 12345.0
+        pupil_io.face_position = lambda: (0, np.array([np.nan, np.nan, np.nan], dtype=np.float32))
+
+        ui._draw_adjust_position()
+
+        assert ui._phase_adjust_position is True
+        assert ui._hands_free_start_timestamp == 0
+
 
 class TestRendering:
     def test_head_adjustment_draws_the_boundary_and_target_zone(self, make_ui):
@@ -261,6 +275,17 @@ class TestRendering:
 
         assert "draw_rect" in backend.names()
         assert "draw_circle" in backend.names()
+
+    def test_head_adjustment_handles_nan_face_position(self, make_ui, pupil_io):
+        pupil_io.face_position = lambda: (0, np.array([np.nan, np.nan, np.nan], dtype=np.float32))
+        ui, backend = make_ui(actions=["quit"])
+
+        ui.draw(validate=False)
+
+        assert "draw_rect" in backend.names()
+        assert "draw_circle" in backend.names()
+        assert "draw_image" not in backend.names()
+        assert pupil_io.config.instruction_head_center in backend.texts()
 
     def test_face_preview_is_drawn_when_enabled(self, make_ui, pupil_io):
         pupil_io.config.face_previewing = 1
