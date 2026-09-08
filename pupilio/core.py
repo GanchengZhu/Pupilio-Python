@@ -303,6 +303,17 @@ class Pupilio:
         avatar_path = Path(__file__).parent / 'asset' / 'smiling-face.png'
         self.face_avatar_raw = cv2.imread(str(avatar_path), cv2.IMREAD_UNCHANGED)
 
+        # LabStreamingLayer (LSL) Manager
+        self._lsl_manager = None
+        if getattr(self.config, "enable_lsl", False):
+            from .lsl import LSLManager
+            self._lsl_manager = LSLManager(
+                pupil_io=self,
+                gaze_stream_name=self.config.lsl_gaze_stream_name,
+                marker_stream_name=self.config.lsl_marker_stream_name,
+                stream_mode=self.config.lsl_stream_mode,
+            )
+
     def query_support_samping_rate(self):
         """
         Query the sampling (frame) rates supported by the currently active camera mode.
@@ -547,6 +558,10 @@ class Pupilio:
         if res == ET_ReturnCode.ET_FAILED.value:
             logger.error("Failed to start sampling.")
             raise RuntimeError("You have called `start_sampling` function or something went wrong.")
+
+        if self._lsl_manager:
+            self._lsl_manager.start()
+
         return res
 
     def get_sampling_status(self) -> bool:
@@ -585,6 +600,9 @@ class Pupilio:
         if not self.get_sampling_status():
             logger.error("No sampling thread is currently running.")
             raise RuntimeError("There is no sampling running.")
+
+        if self._lsl_manager:
+            self._lsl_manager.stop()
 
         res = self._et_native_lib.pupil_io_stop_sampling()
         time.sleep(0.1)
@@ -782,19 +800,11 @@ class Pupilio:
         Returns:
             int: An :class:`ET_ReturnCode` value; ``ET_SUCCESS`` on success.
         """
-        # logging.info("release deep gaze")
-        return_code = self._et_native_lib.pupil_io_release()
+        if self._lsl_manager:
+            self._lsl_manager.stop()
+            self._lsl_manager = None
 
-        # if platform.system().lower() == 'windows':
-        #     kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-        #     free_library = kernel32.FreeLibrary
-        #     free_library.argtypes = [ctypes.c_void_p]
-        #     if free_library(self._et_native_lib._handle):
-        #         logging.info("native library unload successfully.")
-        #     else:
-        #         logging.info("failed to unload native library.")
-        # else:
-        #     logging.warning("Not supported platform: %s" % platform.system())
+        return_code = self._et_native_lib.pupil_io_release()
         return return_code
 
     def set_trigger(self, trigger: int) -> int:
@@ -803,6 +813,8 @@ class Pupilio:
 
         Use this to align eye-tracking data with experiment events; the code is written
         into the recorded data alongside the sample it lands on.
+        If LabStreamingLayer (LSL) is enabled, this trigger is also automatically broadcast
+        to the LSL Marker stream and stamped onto the continuous Gaze stream trigger channel.
 
         Args:
             trigger (int): Trigger code to record, between 1 and 65535.
@@ -823,9 +835,66 @@ class Pupilio:
             raise ValueError("Trigger must be between 1 and 65535")
 
         if self._et_native_lib.pupil_io_send_trigger(trigger) == ET_ReturnCode.ET_SUCCESS:
+            if self._lsl_manager:
+                self._lsl_manager.push_trigger(trigger)
             return ET_ReturnCode.ET_SUCCESS
         else:
             raise Exception("Please don't call `set_trigger` function too frequently.")
+
+    def send_lsl_marker(self, marker: str):
+        """
+        Broadcast a custom semantic string marker to the LabStreamingLayer (LSL) Marker stream.
+
+        Args:
+            marker (str): Semantic marker string, e.g. 'TRIAL_START', 'STIMULUS_ONSET'.
+        """
+        if not self._lsl_manager:
+            logger.warning("LSL is not enabled; marker was not sent to LSL.")
+            return
+        self._lsl_manager.push_marker(marker)
+
+    def start_lsl(
+        self,
+        gaze_stream_name: str = None,
+        marker_stream_name: str = None,
+        stream_mode: str = None,
+    ):
+        """
+        Enable and immediately start LabStreamingLayer (LSL) streaming.
+
+        Args:
+            gaze_stream_name (str, optional): Custom name for the gaze stream.
+            marker_stream_name (str, optional): Custom name for the marker stream.
+            stream_mode (str, optional): 'standard' (12 channels) or 'full' (39 channels).
+        """
+        from .lsl import LSLManager
+
+        if gaze_stream_name:
+            self.config.lsl_gaze_stream_name = gaze_stream_name
+        if marker_stream_name:
+            self.config.lsl_marker_stream_name = marker_stream_name
+        if stream_mode:
+            self.config.lsl_stream_mode = stream_mode
+
+        self.config.enable_lsl = True
+        if self._lsl_manager is None:
+            self._lsl_manager = LSLManager(
+                pupil_io=self,
+                gaze_stream_name=self.config.lsl_gaze_stream_name,
+                marker_stream_name=self.config.lsl_marker_stream_name,
+                stream_mode=self.config.lsl_stream_mode,
+            )
+        self._lsl_manager.start()
+
+    def stop_lsl(self):
+        """Stop LabStreamingLayer (LSL) streaming."""
+        if self._lsl_manager:
+            self._lsl_manager.stop()
+
+    @property
+    def lsl_manager(self):
+        """Return the active LSLManager instance, or None if LSL is disabled."""
+        return self._lsl_manager
 
     def set_filter_enable(self, status: bool) -> int:
         """

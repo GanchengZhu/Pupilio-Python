@@ -98,6 +98,12 @@ class DefaultConfig:
         Simulation mode:
             - `simulation_mode` (bool): Switch of simulation mode. If true, use your mouse to replace the eye position.
                 Default is false.
+
+        LabStreamingLayer (LSL) Settings:
+            - `enable_lsl` (bool): Enable real-time streaming to LabStreamingLayer. Default is False.
+            - `lsl_gaze_stream_name` (str): Name of the continuous gaze stream in LSL. Default is "Pupilio_Gaze".
+            - `lsl_marker_stream_name` (str): Name of the discrete marker/event stream in LSL. Default is "Pupilio_Markers".
+            - `lsl_stream_mode` (str): Gaze stream mode, either "standard" (12 channels) or "full" (39 channels). Default is "standard".
     """
 
     def __init__(self):
@@ -216,6 +222,12 @@ class DefaultConfig:
 
         self._sampling_rate = None
 
+        # LabStreamingLayer (LSL) settings
+        self.enable_lsl: bool = False
+        self.lsl_gaze_stream_name: str = "Pupilio_Gaze"
+        self.lsl_marker_stream_name: str = "Pupilio_Markers"
+        self._lsl_stream_mode: str = "standard"
+
     @property
     def sampling_rate(self):
         return self._sampling_rate
@@ -292,6 +304,22 @@ class DefaultConfig:
             raise TypeError(f"simulation_mode must be a bool or 0/1, got {type(value).__name__}")
 
         self._simulation_mode = value
+
+    @property
+    def lsl_stream_mode(self) -> str:
+        """Mode of the LSL gaze stream: 'standard' (12 channels) or 'full' (39 channels)."""
+        return self._lsl_stream_mode
+
+    @lsl_stream_mode.setter
+    def lsl_stream_mode(self, mode: str):
+        if not isinstance(mode, str):
+            raise TypeError("lsl_stream_mode must be a string ('standard' or 'full').")
+        mode = mode.lower()
+        if mode not in ("standard", "full"):
+            raise ValueError(
+                f"Invalid lsl_stream_mode '{mode}'. Supported modes are 'standard' (12 channels) and 'full' (39 channels)."
+            )
+        self._lsl_stream_mode = mode
 
     def instruction_language(self, lang='zh-CN'):
         """

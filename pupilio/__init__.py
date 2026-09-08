@@ -52,6 +52,8 @@ __all__ = [
     'CalibrationMode',
     'ActiveEye',
     'CameraMode',
+    'LSLManager',
+    'PupilioLSLOutlet',
     '__version__'
 ]
 
@@ -68,6 +70,8 @@ _MODULE_MAP = {
     'CalibrationMode': '.misc',
     'ActiveEye': '.misc',
     'CameraMode': '.misc',
+    'LSLManager': '.lsl',
+    'PupilioLSLOutlet': '.lsl',
     '__version__': '.version'
 }
 

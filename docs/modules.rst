@@ -61,3 +61,12 @@ pupilio.annotation module
    :members:
    :undoc-members:
    :show-inheritance:
+
+pupilio.lsl module
+------------------
+
+.. automodule:: pupilio.lsl
+   :members:
+   :undoc-members:
+   :show-inheritance:
+

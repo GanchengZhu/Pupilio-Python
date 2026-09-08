@@ -1,5 +1,13 @@
 # Pupilio SDK Update Log
 
+## Version 1.5.0 (Build 1) - 2026-09-08
+- Added native LabStreamingLayer (LSL) support for multi-modal real-time synchronization (EEG, fNIRS, EMG, etc.).
+- Introduced continuous Gaze stream with 12-channel Standard Mode (including dedicated trigger channel) and 39-channel Research Mode.
+- Introduced discrete Marker stream for experimental triggers and custom semantic string annotations.
+- Implemented sub-millisecond hardware camera exposure clock synchronization with LSL time domain.
+- Added automatic trigger and marker forwarding in `pupil_io.set_trigger()` and `pupil_io.send_lsl_marker()`.
+- Added comprehensive documentation, examples, and GitHub Wiki integration guide.
+
 ## Version 1.4.0 (Build 1) - 2026-06-14
 - Support 400Hz eye-tracking sampling
 

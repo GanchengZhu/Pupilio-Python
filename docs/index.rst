@@ -20,6 +20,7 @@ Welcome to the Pupilio Documentation!
 
    start/quick_start
    start/demo
+   start/lsl_guide
 
 
 .. toctree::

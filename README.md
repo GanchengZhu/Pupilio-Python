@@ -21,13 +21,14 @@
 ### Features
 - **Precision Tracking**: Capture high-frequency eye movement and pupil dynamics with lab-grade accuracy.
 - **Seamless Compatibility**: Native integration with PsychoPy, PyGame, and other Python experimental platforms.
+- **Multi-Modal Synchronization**: Native support for LabStreamingLayer (LSL) to synchronize gaze, pupil dynamics, and event markers with EEG, fNIRS, and EMG via LabRecorder.
 - **Intuitive Workflow**: Simplified calibration, validation, and recording with minimal setup.
 
 ### Specifications
 
 | Attribute                | Specification                                 |
 |--------------------------|-----------------------------------------------|
-| Sample Rate              | 200 Hz                                        |
+| Sample Rate              | 200 Hz / 400 Hz                               |
 | Accuracy                 | 0.5-1°                                        |
 | Precision                | 0.03°                                         |
 | Blink/Occlusion Recovery | 5 ms @ 200 Hz                                 |
@@ -35,6 +36,7 @@
 | Operation Range          | 50 - 90 cm                                    |
 | Gaze Signal Delay        | < 25 ms                                       |
 | Tracking Technology      | Neural Networks                               |
+| Network Streaming        | LabStreamingLayer (LSL) Gaze & Marker Streams |
 | Dimension                | 32 cm x 45 cm x 20 cm                         |
 | Weight                   | 5 kg [Eye-tracker + Display + Compute Module] |
 | Operating System         | Windows 11                                    |
@@ -101,6 +103,36 @@ pupil_io.release()
 # quit pygame
 pygame.quit()
 ```
+
+## Multi-Modal Synchronization (LabStreamingLayer)
+
+Pupilio natively supports **LabStreamingLayer (LSL)** to synchronize eye-tracking data (gaze, pupil diameter, triggers) with EEG, fNIRS, and other biosensors via [LabRecorder](https://github.com/labstreaminglayer/App-LabRecorder).
+
+```python
+from pupilio import Pupilio, DefaultConfig
+
+config = DefaultConfig()
+config.enable_lsl = True
+config.lsl_stream_mode = "standard"  # 12 channels (or "full" for 39 channels)
+
+pupil_io = Pupilio(config=config)
+pupil_io.create_session("eeg_eyetracking_session")
+
+# Start sampling (LSL starts broadcasting automatically)
+pupil_io.start_sampling()
+
+# Forward numeric triggers to both LSL continuous Gaze (channel 11) & discrete Markers stream
+pupil_io.set_trigger(101)
+
+# Broadcast custom semantic string annotations
+pupil_io.send_lsl_marker("STIMULUS_ONSET")
+
+# Stop sampling (LSL stops automatically)
+pupil_io.stop_sampling()
+pupil_io.release()
+```
+
+For detailed stream specifications and integration with EEGLAB / MNE, see the [LabStreamingLayer Integration Guide](docs/start/lsl_guide.md) or [GitHub Wiki](docs/wiki/LabStreamingLayer-Integration.md).
 
 ## Preprocessing for eye tracking data
 
