@@ -47,6 +47,14 @@ class TestConstruction:
         with pytest.raises(ValueError, match="look_ahead"):
             Pupilio(config=simulation_config)
 
+    def test_get_version_returns_non_empty_string(self, pupil_io):
+        version = pupil_io.get_version()
+        assert isinstance(version, str)
+        assert len(version) > 0
+
+    def test_recalibrate_returns_known_status(self, pupil_io):
+        assert pupil_io.recalibrate() in list(ET_ReturnCode)
+
 
 class TestCameraMode:
     def test_supported_rates_are_ascending_and_non_empty(self, pupil_io):
@@ -147,6 +155,14 @@ class TestEstimation:
         assert bino.shape == (10,)
         assert isinstance(timestamp, int)
         assert trigger == 0
+
+    def test_estimate_gaze_full_returns_the_documented_shapes(self, pupil_io):
+        status, pt_full, timestamp = pupil_io.estimate_gaze_full()
+
+        assert status in list(ET_ReturnCode)
+        assert pt_full.shape == (38,)
+        assert pt_full.dtype == np.float32
+        assert isinstance(timestamp, int)
 
     def test_estimation_lr_returns_the_documented_shapes(self, pupil_io):
         with warnings.catch_warnings():

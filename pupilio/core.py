@@ -142,8 +142,21 @@ class Pupilio:
         self._et_native_lib.pupil_io_set_cali_mode.restype = ctypes.c_int
         self._et_native_lib.pupil_io_set_kappa_filter.restype = ctypes.c_int
         self._et_native_lib.pupil_io_set_log.restype = ctypes.c_int
+        self._et_native_lib.pupil_io_set_eye_mode.restype = ctypes.c_int
+        self._et_native_lib.pupil_io_estimate_gaze.restype = ctypes.c_int
 
         # Set argument types
+        self._et_native_lib.pupil_io_init.argtypes = []
+        self._et_native_lib.pupil_io_recalibrate.argtypes = []
+        self._et_native_lib.pupil_io_release.argtypes = []
+        self._et_native_lib.pupil_io_get_version.argtypes = []
+        self._et_native_lib.pupil_io_previewer_start.argtypes = []
+        self._et_native_lib.pupil_io_previewer_stop.argtypes = []
+        self._et_native_lib.pupil_io_start_sampling.argtypes = []
+        self._et_native_lib.pupil_io_stop_sampling.argtypes = []
+        self._et_native_lib.pupil_io_clear_cache.argtypes = []
+        self._et_native_lib.pupil_io_set_look_ahead.argtypes = [ctypes.c_int]
+
         self._et_native_lib.pupil_io_cali.argtypes = [ctypes.c_int]
         self._et_native_lib.pupil_io_face_pos.argtypes = [
             np.ctypeslib.ndpointer(dtype=np.float32, ndim=1, flags='C_CONTIGUOUS')
@@ -201,7 +214,7 @@ class Pupilio:
 
         self._et_native_lib.pupil_io_est_full.restype = ctypes.c_int
         self._et_native_lib.pupil_io_est_full.argtypes = [
-            ctypes.POINTER(ctypes.c_float),  # float* pt
+            np.ctypeslib.ndpointer(dtype=np.float32, ndim=1, flags='C_CONTIGUOUS'),  # float* pt
             ctypes.POINTER(ctypes.c_longlong)  # long long* timestamp
         ]
 
@@ -212,21 +225,35 @@ class Pupilio:
             ctypes.POINTER(ctypes.c_int)  # int* mode
         ]
 
+        if hasattr(self._et_native_lib, "get_version"):
+            self._et_native_lib.get_version.restype = ctypes.c_char_p
+            self._et_native_lib.get_version.argtypes = []
+
         version = self._et_native_lib.pupil_io_get_version()
         print("Native Pupilio Version:", version.decode("gbk"))
         # set tracking eye
-        self._et_native_lib.pupil_io_set_eye_mode(self.config.active_eye.value)
+        ret = self._et_native_lib.pupil_io_set_eye_mode(self.config.active_eye.value)
+        if ret != ET_ReturnCode.ET_SUCCESS.value:
+            logger.warning(f"pupil_io_set_eye_mode returned code {ret}")
 
         # set filter parameter: look ahead
         if not (isinstance(self.config.look_ahead, int) and (0 < self.config.look_ahead <= 4)):
             raise ValueError("Parameter `look_ahead` must be between 0 and 4 and integer")
 
-        self._et_native_lib.pupil_io_set_look_ahead(self.config.look_ahead)
+        ret = self._et_native_lib.pupil_io_set_look_ahead(self.config.look_ahead)
+        if ret != ET_ReturnCode.ET_SUCCESS.value:
+            logger.warning(f"pupil_io_set_look_ahead returned code {ret}")
+
         # set enable kappa verify
-        self._et_native_lib.pupil_io_set_kappa_filter(self.config.enable_kappa_verification)
+        ret = self._et_native_lib.pupil_io_set_kappa_filter(self.config.enable_kappa_verification)
+        if ret != ET_ReturnCode.ET_SUCCESS.value:
+            logger.warning(f"pupil_io_set_kappa_filter returned code {ret}")
+
         # config logger
         os.makedirs(self.config.log_directory, exist_ok=True)
-        self._et_native_lib.pupil_io_set_log(self.config.enable_debug_logging, self.config.log_directory.encode("gbk"))
+        ret = self._et_native_lib.pupil_io_set_log(self.config.enable_debug_logging, self.config.log_directory.encode("gbk"))
+        if ret != ET_ReturnCode.ET_SUCCESS.value:
+            logger.warning(f"pupil_io_set_log returned code {ret}")
 
         # set calibration mode
         if self.config.cali_mode == CalibrationMode.TWO_POINTS:
@@ -238,7 +265,9 @@ class Pupilio:
         else:
             self.calibration_points = np.zeros(2 * 2, dtype=np.float32)
 
-        self._et_native_lib.pupil_io_set_cali_mode(self.config.cali_mode, self.calibration_points)
+        ret = self._et_native_lib.pupil_io_set_cali_mode(self.config.cali_mode, self.calibration_points)
+        if ret != ET_ReturnCode.ET_SUCCESS.value:
+            logger.warning(f"pupil_io_set_cali_mode returned code {ret}")
         self.calibration_points = np.reshape(self.calibration_points, (-1, 2))
 
         # Initialize tracker, raise an exception if initialization fails
@@ -295,6 +324,7 @@ class Pupilio:
         self._pt_l = np.zeros(14, dtype=np.float32)
         self._pt_r = np.zeros(14, dtype=np.float32)
         self._pt_bino = np.zeros(10, dtype=np.float32)
+        self._pt_full = np.zeros(38, dtype=np.float32)
 
         self._previewer_thread = None
         self._online_event_detection = None
@@ -313,6 +343,16 @@ class Pupilio:
                 marker_stream_name=self.config.lsl_marker_stream_name,
                 stream_mode=self.config.lsl_stream_mode,
             )
+
+    def get_version(self) -> str:
+        """
+        Retrieve the native Pupilio library version string.
+
+        Returns:
+            str: Version string decoded from native library.
+        """
+        version = self._et_native_lib.pupil_io_get_version()
+        return version.decode("gbk") if version else ""
 
     def query_support_samping_rate(self):
         """
@@ -451,8 +491,12 @@ class Pupilio:
             ipaddress.ip_address(udp_host)
         except ValueError:
             raise Exception(f"Invalid IP address: {udp_host}.")
-        self._et_native_lib.pupil_io_previewer_init(udp_host.encode('gbk'), udp_port, draw_preview_annotations)
-        self._et_native_lib.pupil_io_previewer_start()
+        ret_init = self._et_native_lib.pupil_io_previewer_init(udp_host.encode('gbk'), udp_port, draw_preview_annotations)
+        if ret_init != ET_ReturnCode.ET_SUCCESS.value:
+            logger.warning(f"pupil_io_previewer_init returned non-success code: {ret_init}")
+        ret_start = self._et_native_lib.pupil_io_previewer_start()
+        if ret_start != ET_ReturnCode.ET_SUCCESS.value:
+            logger.warning(f"pupil_io_previewer_start returned non-success code: {ret_start}")
 
     def previewer_stop(self):
         """
@@ -461,7 +505,9 @@ class Pupilio:
         Returns:
             None
         """
-        self._et_native_lib.pupil_io_previewer_stop()
+        ret = self._et_native_lib.pupil_io_previewer_stop()
+        if ret != ET_ReturnCode.ET_SUCCESS.value:
+            logger.warning(f"pupil_io_previewer_stop returned non-success code: {ret}")
 
     def create_session(self, session_name: str) -> int:
         """
@@ -555,8 +601,8 @@ class Pupilio:
 
         res = self._et_native_lib.pupil_io_start_sampling()
         time.sleep(0.05)
-        if res == ET_ReturnCode.ET_FAILED.value:
-            logger.error("Failed to start sampling.")
+        if res != ET_ReturnCode.ET_SUCCESS.value:
+            logger.error(f"Failed to start sampling (code: {res}).")
             raise RuntimeError("You have called `start_sampling` function or something went wrong.")
 
         if self._lsl_manager:
@@ -606,8 +652,8 @@ class Pupilio:
 
         res = self._et_native_lib.pupil_io_stop_sampling()
         time.sleep(0.1)
-        if res == ET_ReturnCode.ET_FAILED.value:
-            logger.error("Failed to stop sampling.")
+        if res != ET_ReturnCode.ET_SUCCESS.value:
+            logger.error(f"Failed to stop sampling (code: {res}).")
             raise RuntimeError("There is no sampling running.")
         return res
 
@@ -789,6 +835,27 @@ class Pupilio:
                                                             ctypes.byref(timestamp))
         trigger = 0
         return status, self._pt_l, self._pt_r, self._pt_bino, timestamp.value, trigger
+
+    def estimate_gaze_full(self) -> Tuple[int, np.ndarray, int]:
+        """
+        Estimate full 38-channel gaze parameters for left eye, right eye, and binocular fusion.
+
+        This function calls the native `pupil_io_est_full` entry point to obtain the full
+        38-element array laid out as:
+            left_eye_sample (14 floats) + right_eye_sample (14 floats) + bino_eye_sample (10 floats).
+
+        Returns:
+            Tuple[int, np.ndarray, int]:
+                - int: Status code, where `ET_ReturnCode.ET_SUCCESS` indicates success.
+                - np.ndarray: Full 38-float parameter array.
+                - int: Timestamp of the estimation (in milliseconds).
+
+        Note:
+            The returned array is reused between calls; copy it if you need to retain the values.
+        """
+        timestamp = ctypes.c_longlong()
+        status = self._et_native_lib.pupil_io_est_full(self._pt_full, ctypes.byref(timestamp))
+        return status, self._pt_full, timestamp.value
 
     def release(self) -> int:
         """
@@ -1345,18 +1412,30 @@ class Pupilio:
         right_img_ptr = preview_right_img.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte))
 
         # Call the native eye-tracking library to retrieve data
-        self._et_native_lib.pupil_io_get_previewer(ctypes.pointer(left_img_ptr),
-                                                   ctypes.pointer(right_img_ptr),
-                                                   eye_rects, pupil_centers,
-                                                   glint_centers)
+        ret = self._et_native_lib.pupil_io_get_previewer(ctypes.pointer(left_img_ptr),
+                                                         ctypes.pointer(right_img_ptr),
+                                                         eye_rects, pupil_centers,
+                                                         glint_centers)
 
-        # Copy data from native library back into the numpy arrays
-        ctypes.memmove(preview_left_img.ctypes.data, left_img_ptr, preview_left_img.nbytes)
-        ctypes.memmove(preview_right_img.ctypes.data, right_img_ptr, preview_right_img.nbytes)
+        if ret == ET_ReturnCode.ET_SUCCESS.value:
+            # Copy data from native library back into the numpy arrays
+            ctypes.memmove(preview_left_img.ctypes.data, left_img_ptr, preview_left_img.nbytes)
+            ctypes.memmove(preview_right_img.ctypes.data, right_img_ptr, preview_right_img.nbytes)
+        else:
+            logger.warning(f"pupil_io_get_previewer returned non-success code: {ret}")
 
         preview_imgs = self._process_images(preview_left_img, preview_right_img, eye_rects, pupil_centers,
                                             glint_centers)
         return preview_imgs
+
+    def recalibrate(self) -> int:
+        """
+        Reset the native calibration state so a fresh calibration can start.
+
+        Returns:
+            int: An :class:`ET_ReturnCode` value; ``ET_SUCCESS`` on success.
+        """
+        return self._et_native_lib.pupil_io_recalibrate()
 
     def _recalibration(self) -> int:
         """
@@ -1368,7 +1447,7 @@ class Pupilio:
         Returns:
             int: An :class:`ET_ReturnCode` value; ``ET_SUCCESS`` on success.
         """
-        return self._et_native_lib.pupil_io_recalibrate()
+        return self.recalibrate()
 
     def _draw_avatar_face(self,
                           img: np.ndarray,

@@ -32,21 +32,28 @@ class TestVersionCompat(unittest.TestCase):
             cali_ui = AutoCalibrationUI(self_obj, ui_backend)
             cali_ui.draw(validate=validate, bg_color=(255, 255, 255), hands_free=hands_free)
             
-        with patch.object(Pupilio, 'calibration_draw', mock_calibration_draw):
-            # Patch pygame event loop in the example to exit immediately
-            def mock_event_get():
-                ev = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN)
-                return [ev]
-                
-            with patch('pygame.event.get', side_effect=mock_event_get):
-                # We also need to patch time.wait to speed up the script
-                with patch('pygame.time.wait', return_value=None):
-                    old_cwd = os.getcwd()
-                    os.chdir(self.example_dir)
-                    try:
-                        runpy.run_path('picture_viewing_pygame.py')
-                    finally:
-                        os.chdir(old_cwd)
+        orig_init = Pupilio.__init__
+        def mock_init(self_obj, config=None):
+            if config is not None:
+                config.simulation_mode = True
+            orig_init(self_obj, config)
+
+        with patch.object(Pupilio, '__init__', mock_init):
+            with patch.object(Pupilio, 'calibration_draw', mock_calibration_draw):
+                # Patch pygame event loop in the example to exit immediately
+                def mock_event_get():
+                    ev = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN)
+                    return [ev]
+                    
+                with patch('pygame.event.get', side_effect=mock_event_get):
+                    # We also need to patch time.wait to speed up the script
+                    with patch('pygame.time.wait', return_value=None):
+                        old_cwd = os.getcwd()
+                        os.chdir(self.example_dir)
+                        try:
+                            runpy.run_path('picture_viewing_pygame.py')
+                        finally:
+                            os.chdir(old_cwd)
 
     def test_psychopy_example(self):
         try:
@@ -67,21 +74,28 @@ class TestVersionCompat(unittest.TestCase):
             ui_backend = PsychoPyUIBackend(screen)
             cali_ui = AutoCalibrationUI(self_obj, ui_backend)
             cali_ui.draw(validate=validate, bg_color=(255, 255, 255), hands_free=hands_free)
+
+        orig_init = Pupilio.__init__
+        def mock_init(self_obj, config=None):
+            if config is not None:
+                config.simulation_mode = True
+            orig_init(self_obj, config)
             
-        with patch.object(Pupilio, 'calibration_draw', mock_calibration_draw):
-            def mock_getKeys(*args, **kwargs):
-                return ['return']
-            with patch('psychopy.event.getKeys', side_effect=mock_getKeys):
-                with patch('psychopy.core.wait', return_value=None):
-                    old_cwd = os.getcwd()
-                    os.chdir(self.example_dir)
-                    try:
-                        runpy.run_path('picture_viewing_psychopy.py')
-                    except SystemExit as e:
-                        if e.code != 0:
-                            raise e
-                    finally:
-                        os.chdir(old_cwd)
+        with patch.object(Pupilio, '__init__', mock_init):
+            with patch.object(Pupilio, 'calibration_draw', mock_calibration_draw):
+                def mock_getKeys(*args, **kwargs):
+                    return ['return']
+                with patch('psychopy.event.getKeys', side_effect=mock_getKeys):
+                    with patch('psychopy.core.wait', return_value=None):
+                        old_cwd = os.getcwd()
+                        os.chdir(self.example_dir)
+                        try:
+                            runpy.run_path('picture_viewing_psychopy.py')
+                        except SystemExit as e:
+                            if e.code != 0:
+                                raise e
+                        finally:
+                            os.chdir(old_cwd)
 
 if __name__ == '__main__':
     unittest.main()
