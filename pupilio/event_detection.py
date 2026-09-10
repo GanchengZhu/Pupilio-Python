@@ -45,8 +45,8 @@ class EventDetection:
     protocols. In Proceedings of the 2000 symposium on Eye tracking research & applications (pp. 71-78).
     """
 
-    def __init__(self):
-        """Initialize EventDetection by loading DummyPupilioET.dll depending on platform."""
+    def __init__(self, simulation_mode: bool = False):
+        """Initialize EventDetection by loading PupilioET.dll (or DummyPupilioET.dll) depending on platform."""
         if platform.system().lower() == 'windows':
             _current_dir = os.path.abspath(os.path.dirname(__file__))
             _lib_dir = os.path.join(_current_dir, "lib")
@@ -55,12 +55,26 @@ class EventDetection:
             os.add_dll_directory(_lib_dir)
             os.environ['PATH'] += ';' + _lib_dir
 
-            # Load DLL
-            _dll_path = os.path.join(_lib_dir, 'DummyPupilioET.dll')
+            # Load DLL based on simulation_mode
+            dll_name = 'DummyPupilioET.dll' if simulation_mode else 'PupilioET.dll'
+            _dll_path = os.path.join(_lib_dir, dll_name)
             if not os.path.exists(_dll_path):
-                raise FileNotFoundError(f"DLL not found: {_dll_path}")
+                alt_name = 'PupilioET.dll' if simulation_mode else 'DummyPupilioET.dll'
+                alt_path = os.path.join(_lib_dir, alt_name)
+                if os.path.exists(alt_path):
+                    _dll_path = alt_path
+                else:
+                    raise FileNotFoundError(f"DLL not found: {_dll_path}")
 
-            self._et_native_lib = ctypes.CDLL(_dll_path, winmode=0)
+            try:
+                self._et_native_lib = ctypes.CDLL(_dll_path, winmode=0)
+            except OSError:
+                # Fallback to DummyPupilioET.dll if PupilioET.dll dependencies are missing
+                dummy_path = os.path.join(_lib_dir, 'DummyPupilioET.dll')
+                if os.path.exists(dummy_path):
+                    self._et_native_lib = ctypes.CDLL(dummy_path, winmode=0)
+                else:
+                    raise
         else:
             raise Exception(f"Not supported platform: {platform.system()}")
 
@@ -76,7 +90,7 @@ class EventDetection:
         self._et_native_lib.pupil_io_event_detection.restype = ctypes.c_int
 
     def detect(self, data_path: str, output_dir: str, which_eye: str,
-               minimum_duration: int = 30, dispersion_threshold: float = 1.0) -> bool:
+               minimum_duration: int = 80, dispersion_threshold: float = 1.0) -> bool:
         """
         Run event detection on a gaze data CSV file.
 

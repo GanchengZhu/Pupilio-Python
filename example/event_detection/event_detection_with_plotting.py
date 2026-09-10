@@ -44,12 +44,15 @@ from pupilio import EventDetection
 import glob
 
 # ---- Initialize the event detector ----
-ed = EventDetection()
+ed = EventDetection(simulation_mode=1)
 
 # ---- Define input and output directories ----
 input_dir = 'data'
 output_dir = 'output'
 os.makedirs(output_dir, exist_ok=True)
+
+# Which eye to detect and plot: 'left', 'right', or 'bino'
+which_eye = 'right'
 
 # ---- Process each CSV file in the input directory ----
 for input_path in glob.glob(os.path.join(input_dir, '*.csv')):
@@ -60,7 +63,7 @@ for input_path in glob.glob(os.path.join(input_dir, '*.csv')):
 
     # ---- Run eye movement event detection ----
     # This generates files: BLK_ (blinks), FIX_ (fixations), SAC_ (saccades)
-    ed.detect(input_path, output_dir=output_dir, which_eye='right')
+    ed.detect(input_path, output_dir=output_dir, which_eye=which_eye)
 
     # ---- Load saccade results ----
     # The SAC_ file naming convention: SAC_{original_filename}.csv
@@ -80,9 +83,9 @@ for input_path in glob.glob(os.path.join(input_dir, '*.csv')):
 
     # ---- Prepare gaze data for plotting ----
     # Set invalid gaze points to NaN so matplotlib will break the line
-    x_col = 'left_eye_gaze_position_x'
-    y_col = 'left_eye_gaze_position_y'
-    valid_col = 'left_eye_valid'
+    x_col = f'{which_eye}_eye_gaze_position_x'
+    y_col = f'{which_eye}_eye_gaze_position_y'
+    valid_col = f'{which_eye}_eye_valid'
 
     raw_full = raw_data.copy()
 
@@ -131,9 +134,9 @@ for input_path in glob.glob(os.path.join(input_dir, '*.csv')):
     plt.tight_layout()
 
     # Save the plot with a clean filename (without the SAC_ prefix)
-    # output_plot = os.path.join(output_dir, f'saccade_trace_{base_filename}.png')
-    # plt.savefig(output_plot, dpi=150, bbox_inches='tight')
-    # print(f"Plot saved to: {output_plot}")
+    output_plot = os.path.join(output_dir, f'saccade_trace_{base_filename}.png')
+    plt.savefig(output_plot, dpi=150, bbox_inches='tight')
+    print(f"Plot saved to: {output_plot}")
 
     # Display the plot (uncomment if you want to see it interactively)
     plt.show()
