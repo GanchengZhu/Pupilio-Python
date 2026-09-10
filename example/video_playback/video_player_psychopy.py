@@ -226,7 +226,7 @@ if __name__ == '__main__':
     vids = {}
     for _idx, _vid in enumerate(video_list):
         v_path = os.path.join("video", _vid)
-        vids[_idx] = MovieStim3(win, v_path, units='pix', size=(1920, 1080), pos=(0, 0))
+        vids[_idx] = MovieStim3(win, v_path, units='pix', size=(1920, 1080), pos=(0, 0), noAudio=True)
     fixation_stim = visual.TextStim(win, text='+', height=64, color=(-1, -1, -1), units='pix')
     # initializing the tracker
     pi = Pupilio()

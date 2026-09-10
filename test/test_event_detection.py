@@ -5,7 +5,6 @@
 # assert on behaviour the Python layer owns.
 
 import pytest
-
 from conftest import windows_only
 
 pytestmark = windows_only

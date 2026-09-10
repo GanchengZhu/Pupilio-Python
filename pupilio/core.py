@@ -28,6 +28,10 @@
 #
 # DESCRIPTION:
 # The core library
+
+# Author: GC Zhu
+# Email: zhugc2016@gmail.com
+
 from __future__ import annotations
 
 import ctypes
@@ -48,9 +52,8 @@ from .annotation import deprecated
 from .default_config import DefaultConfig
 from .misc import ET_ReturnCode, CalibrationMode, CameraMode
 
-
-# Author: GC Zhu
-# Email: zhugc2016@gmail.com
+# Hardware-supported sampling rates (sync_400 sensor capability)
+HARDWARE_RATES = [200, 400]
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +240,7 @@ class Pupilio:
             logger.warning(f"pupil_io_set_eye_mode returned code {ret}")
 
         # set filter parameter: look ahead
-        if not (isinstance(self.config.look_ahead, int) and (0 < self.config.look_ahead <= 4)):
+        if not (isinstance(self.config.look_ahead, int) and (0 <= self.config.look_ahead <= 4)):
             raise ValueError("Parameter `look_ahead` must be between 0 and 4 and integer")
 
         ret = self._et_native_lib.pupil_io_set_look_ahead(self.config.look_ahead)
@@ -270,48 +273,109 @@ class Pupilio:
             logger.warning(f"pupil_io_set_cali_mode returned code {ret}")
         self.calibration_points = np.reshape(self.calibration_points, (-1, 2))
 
-        # Initialize tracker, raise an exception if initialization fails
-        if self._et_native_lib.pupil_io_init() != ET_ReturnCode.ET_SUCCESS.value:
-            logger.error("Pupilio init failed.")
-            raise RuntimeError("Pupilio init failed, please contact the developer!")
+        # ===== Initialize tracker first =====
+        # Camera mode is only meaningful AFTER pupil_io_init() has succeeded, so the
+        # whole rate/mode-resolution block must run after init — not before.
+        try:
+            status = self._et_native_lib.pupil_io_init()
+            if status != ET_ReturnCode.ET_SUCCESS.value:
+                raise RuntimeError(f"pupil_io_init failed with code: {status}")
 
-        # we need to call set_camera_mode() before tracker initialization
-        self._camera_mode, self.left_roi, self.right_roi = self.get_camera_mode()
+            self._is_initialized = True
 
-        # supported sampling rate, for the 400_sync mode, the tracker support 200 hz and 400 hz
-        # if the camera configure file show that the camera is sync_400
-        if self._camera_mode == CameraMode.CAMERA_MODE_SYNC_400:
-            supported_sr = [200, 400]
-        else:
-            supported_sr = [200]
-
-        # give a warning and automatically downgrade if user put in an un-supported sampling rate
-        if not self.config.sampling_rate:
-            self.config.sampling_rate = supported_sr[-1]
-        else:
-            if self.config.sampling_rate not in supported_sr:
-                fallback_rate = supported_sr[-1]
+            # ---- Read current camera mode (now meaningful) ----
+            self._camera_mode, self.left_roi, self.right_roi = self.get_camera_mode()
+            if self._camera_mode is None:
                 logger.warning(
-                    f"The requested sampling rate {self.config.sampling_rate} Hz is not supported. "
-                    f"Automatically degrading to {fallback_rate} Hz."
+                    f"[PupilioET] Warning: could not determine camera mode. "
+                    f"Keeping config.sampling_rate = {self.config.sampling_rate} Hz."
+                )
+                logger.info("[PupilioET] System initialized (camera mode unknown)")
+                return
+
+            logger.info(f"[PupilioET] Current camera mode: {self._camera_mode}")
+
+            # ---- Validate / auto-select sampling rate vs HARDWARE ----
+            if self.config.sampling_rate == 0:
+                self.config.sampling_rate = HARDWARE_RATES[-1]
+                logger.info(
+                    f"[PupilioET] Auto-selected sampling rate: "
+                    f"{self.config.sampling_rate} Hz"
+                )
+            elif self.config.sampling_rate not in HARDWARE_RATES:
+                fallback_rate = HARDWARE_RATES[-1]
+                logger.warning(
+                    f"[PupilioET] Warning: requested sampling rate "
+                    f"{self.config.sampling_rate} Hz is not supported by this "
+                    f"hardware. Falling back to {fallback_rate} Hz."
                 )
                 self.config.sampling_rate = fallback_rate
 
-        # if we have a sync_400 camera and want to run at 200 hz, we need to
-        # release, set_camera_mode, then init the tracker again
-        if  self._camera_mode == CameraMode.CAMERA_MODE_SYNC_400:
-            if self.config.sampling_rate == 200:
-                # release the tracker
-                if self._et_native_lib.pupil_io_release() != ET_ReturnCode.ET_SUCCESS.value:
-                    raise Exception("Pupilio release failed, please contact the developer!")
+            # ---- Resolve target mode ----
+            if self.config.sampling_rate == 400:
+                target_mode = CameraMode.CAMERA_MODE_SYNC_400
+            elif self.config.sampling_rate == 200:
+                target_mode = CameraMode.CAMERA_MODE_SYNC_200
+            else:
+                raise RuntimeError(
+                    f"Unsupported sampling_rate: {self.config.sampling_rate}"
+                )
 
-                self.set_camera_mode(CameraMode.CAMERA_MODE_SYNC_200)
+            # ---- Switch only if needed ----
+            if self._camera_mode != target_mode:
+                logger.info(
+                    f"[PupilioET] Switching camera from mode {self._camera_mode} to "
+                    f"mode {target_mode} ({self.config.sampling_rate} Hz)..."
+                )
 
-                if self._et_native_lib.pupil_io_init() != ET_ReturnCode.ET_SUCCESS.value:
-                    raise Exception("Pupilio re-init failed, please contact the developer!")
-                print(f'\nChanged sample rate to 200 Hz and re-inited the tracker')
+                prev_mode = self._camera_mode
 
-            self._camera_mode, self.left_roi, self.right_roi = self.get_camera_mode()
+                # Release
+                status = self._et_native_lib.pupil_io_release()
+                if status != ET_ReturnCode.ET_SUCCESS.value:
+                    raise RuntimeError(f"Pupilio release failed with code: {status}")
+                self._is_initialized = False
+
+                # Set target mode (with best-effort rollback on failure)
+                if not self.set_camera_mode(target_mode):
+                    try:
+                        self._et_native_lib.pupil_io_init()
+                        self._is_initialized = True
+                    except Exception:
+                        pass  # swallow — original error is more useful
+                    raise RuntimeError(
+                        f"Failed to set camera mode to "
+                        f"{self.config.sampling_rate} Hz (mode {target_mode})"
+                    )
+
+                # Re-init
+                status = self._et_native_lib.pupil_io_init()
+                if status != ET_ReturnCode.ET_SUCCESS.value:
+                    raise RuntimeError(f"Pupilio re-init failed with code: {status}")
+                self._is_initialized = True
+
+                # Refresh mode from device — keeps your unpacking style
+                self._camera_mode, self.left_roi, self.right_roi = self.get_camera_mode()
+                logger.info(
+                    f"[PupilioET] Changed sample rate to "
+                    f"{self.config.sampling_rate} Hz (mode {self._camera_mode}) and "
+                    f"re-inited the tracker"
+                )
+            else:
+                logger.info(
+                    f"[PupilioET] Camera already in requested mode "
+                    f"({self.config.sampling_rate} Hz)"
+                )
+
+            # ---- Happy path ----
+            logger.info(
+                f"[PupilioET] System initialized successfully at "
+                f"{self.config.sampling_rate} Hz"
+            )
+
+        except Exception as exc:
+            logger.error(f"[PupilioET] Initialization error: {exc}")
+            raise
 
         self.LEFT_IMG_WIDTH: int = int(self.left_roi[2])
         self.LEFT_IMG_HEIGHT: int = int(self.left_roi[3])
@@ -420,7 +484,8 @@ class Pupilio:
         ret = self._et_native_lib.pupil_io_set_camera_mode(ctypes.byref(mode))
         if ret != ET_ReturnCode.ET_SUCCESS.value:
             logger.error(f"pupil_io_set_camera_mode failed with code {ret}")
-            raise RuntimeError(f"pupil_io_set_camera_mode failed with code {ret}")
+            return False
+        return True
 
     def get_camera_mode(self):
         """

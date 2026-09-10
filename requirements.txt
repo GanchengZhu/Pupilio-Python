@@ -10,3 +10,4 @@ pyvidplayer2~=0.9.28
 pandas~=2.3.3
 matplotlib~=3.10.7
 setuptools~=70.3.0
+psychopy-legacy
