@@ -116,6 +116,12 @@ class Pupilio:
         else:
             logging.warning("Not supported platform: %s" % platform.system())
 
+        # initialize get_camera_mode  return value
+        self._camera_mode = None
+        self.left_roi = None
+        self.right_roi = None
+        self._is_initialized = False
+
         self._session_name = ""
         # Set return types
         self._et_native_lib.pupil_io_set_look_ahead.restype = ctypes.c_int
@@ -285,13 +291,6 @@ class Pupilio:
 
             # ---- Read current camera mode (now meaningful) ----
             self._camera_mode, self.left_roi, self.right_roi = self.get_camera_mode()
-            if self._camera_mode is None:
-                logger.warning(
-                    f"[PupilioET] Warning: could not determine camera mode. "
-                    f"Keeping config.sampling_rate = {self.config.sampling_rate} Hz."
-                )
-                logger.info("[PupilioET] System initialized (camera mode unknown)")
-                return
 
             logger.info(f"[PupilioET] Current camera mode: {self._camera_mode}")
 
@@ -418,7 +417,7 @@ class Pupilio:
         version = self._et_native_lib.pupil_io_get_version()
         return version.decode("gbk") if version else ""
 
-    def query_support_samping_rate(self):
+    def query_support_sampling_rate(self):
         """
         Query the sampling (frame) rates supported by the currently active camera mode.
 
@@ -429,12 +428,13 @@ class Pupilio:
             list[int]: Supported sampling rates in Hz, ascending, per camera mode:
 
                 - ``CAMERA_MODE_SYNC_400`` (0): ``[200, 400]``
-                - ``CAMERA_MODE_SYNC_800`` (1): ``[200, 400, 800]``
-                - ``CAMERA_MODE_SYNC_1000`` (2): ``[200, 400, 800, 1000]``
                 - ``CAMERA_MODE_SYNC_200`` (3): ``[200]``
                 - ``CAMERA_MODE_ASYNC_400`` (4): ``[200, 400]``
 
-                An unrecognised mode falls back to ``[200]``, the rate every device supports.
+                Any other mode — including ``CAMERA_MODE_SYNC_800`` and
+                ``CAMERA_MODE_SYNC_1000`` — falls back to ``[200]``, the rate every
+                device supports. 800 Hz and 1000 Hz modes are not currently supported
+                by the initialization path (see ``HARDWARE_RATES``).
 
         Raises:
             RuntimeError: Propagated from :meth:`get_camera_mode` if the native call fails.
@@ -444,15 +444,14 @@ class Pupilio:
         """
         mode, _left_roi, _right_roi = self.get_camera_mode()
 
-        if mode == CameraMode.CAMERA_MODE_SYNC_800:
-            return [200, 400, 800]
-        elif mode == CameraMode.CAMERA_MODE_SYNC_1000:
-            return [200, 400, 800, 1000]
-        elif mode == CameraMode.CAMERA_MODE_SYNC_200:
+        if mode == CameraMode.CAMERA_MODE_SYNC_200:
             return [200]
         elif mode in (CameraMode.CAMERA_MODE_SYNC_400, CameraMode.CAMERA_MODE_ASYNC_400):
             return [200, 400]
-        logger.warning(f"Unknown camera mode {mode}; assuming 200 Hz only.")
+        logger.warning(
+            f"Camera mode {mode} is not supported by the initialization path "
+            f"(HARDWARE_RATES = {HARDWARE_RATES}); assuming 200 Hz only."
+        )
         return [200]
 
     def set_camera_mode(self, mode_value):
@@ -478,7 +477,9 @@ class Pupilio:
                 sync_400 device, or the call fails internally.
 
         Returns:
-            None
+            bool: True on success, False if the native call rejects the mode. Callers
+                are expected to check the return value — see the release/re-init
+                sequence in :meth:`__init__`.
         """
         mode = ctypes.c_int(mode_value)
         ret = self._et_native_lib.pupil_io_set_camera_mode(ctypes.byref(mode))
@@ -532,9 +533,9 @@ class Pupilio:
             left_roi.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
             right_roi.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
         )
-        if ret != ET_ReturnCode.ET_SUCCESS:
+        if ret != ET_ReturnCode.ET_SUCCESS.value:
             raise RuntimeError(f"pupil_io_get_camera_mode failed with code {ret}")
-        return mode[0], left_roi, right_roi
+        return int(mode[0]), left_roi, right_roi
 
     def previewer_start(self, udp_host: str, udp_port: int, draw_preview_annotations: bool = True):
         """
@@ -645,8 +646,8 @@ class Pupilio:
             raise Exception("The directory of data file is not writeable.")
             # sys.exit(1)  # Exit the program with an error status
 
-        if self._et_native_lib.pupil_io_save_data_to(path.encode("gbk")) == ET_ReturnCode.ET_SUCCESS:
-            return ET_ReturnCode.ET_SUCCESS
+        if self._et_native_lib.pupil_io_save_data_to(path.encode("gbk")) == ET_ReturnCode.ET_SUCCESS.value:
+            return ET_ReturnCode.ET_SUCCESS.value
         else:
             raise Exception(f"Failed to save data at path: {path}.")
 
@@ -966,10 +967,10 @@ class Pupilio:
         if trigger < 1 or trigger > 65535:
             raise ValueError("Trigger must be between 1 and 65535")
 
-        if self._et_native_lib.pupil_io_send_trigger(trigger) == ET_ReturnCode.ET_SUCCESS:
+        if self._et_native_lib.pupil_io_send_trigger(trigger) == ET_ReturnCode.ET_SUCCESS.value:
             if self._lsl_manager:
                 self._lsl_manager.push_trigger(trigger)
-            return ET_ReturnCode.ET_SUCCESS
+            return ET_ReturnCode.ET_SUCCESS.value
         else:
             raise Exception("Please don't call `set_trigger` function too frequently.")
 
@@ -1022,6 +1023,11 @@ class Pupilio:
         """Stop LabStreamingLayer (LSL) streaming."""
         if self._lsl_manager:
             self._lsl_manager.stop()
+
+    @property
+    def is_initialized(self) -> bool:
+        """True once the tracker has been successfully initialized."""
+        return self._is_initialized
 
     @property
     def lsl_manager(self):

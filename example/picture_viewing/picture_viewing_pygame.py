@@ -107,7 +107,7 @@ for _img in images:
 
     # now lets show the gaze cursor, press any key to close the window
     got_key = False
-    max_duration = 10000
+    max_duration = 60000
     t_start = pygame.time.get_ticks()
     pygame.event.clear()  # clear all cached events if there were any
     gx, gy = -65536, -65536
