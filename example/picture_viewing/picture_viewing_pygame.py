@@ -59,7 +59,7 @@ config.face_previewing = 1
 
 # Heuristic filter, recommended look_ahead = 2 (i.e., a noisy spike is determined by
 # 4 flanking samples)
-config.look_ahead = 2
+config.look_ahead = 0
 
 # Set the sampling rate (for models that support 400/800/1000 Hz),
 # on the 200 Hz model, sampling rate will fall back to 200 Hz
@@ -116,36 +116,40 @@ for _img in images:
     while not (got_key or (pygame.time.get_ticks() - t_start) >= max_duration):
         # get the newest gaze position
         left, right, bino = pupil_io.get_current_gaze()
-        if pupil_io.config.active_eye == ActiveEye.BINO_EYE:
-            status, gx_new, gy_new = bino
-        elif pupil_io.config.active_eye == ActiveEye.LEFT_EYE:
-            status, gx_new, gy_new = left
-        elif pupil_io.config.active_eye == ActiveEye.RIGHT_EYE:
-            status, gx_new, gy_new = right
-        else:
-            # fallback to binocular if active eye is not set
-            status, gx_new, gy_new = bino
 
-        # update the gaze position when got valid gaze position (not inf, not nan)
-        # only update if we have a valid sample (status=1) and the values are finite
-        if (status == 1 and
-                math.isfinite(gx_new) and math.isfinite(gy_new)):
-            gx = int(gx_new)
-            gy = int(gy_new)
-            has_valid_gaze = True
+        # ---- unpack left eye ----
+        l_status, lx_new, ly_new = left
+        has_left_valid = (
+                l_status == 1 and math.isfinite(lx_new) and math.isfinite(ly_new)
+        )
+        if has_left_valid:
+            lx, ly = int(lx_new), int(ly_new)
+
+        # ---- unpack right eye ----
+        r_status, rx_new, ry_new = right
+        has_right_valid = (
+                r_status == 1 and math.isfinite(rx_new) and math.isfinite(ry_new)
+        )
+        if has_right_valid:
+            rx, ry = int(rx_new), int(ry_new)
 
         # check key presses
         for ev in pygame.event.get():
             if ev.type == KEYDOWN:
                 if ev.key == K_RETURN:
                     got_key = True
-                # if ev.key == K_SPACE:
 
-        # update the visual (image and gaze cursor)
+        # update the visual (image and gaze cursors)
         win.blit(im, (0, 0))
-        # only draw the cursor if we have valid gaze data
-        if has_valid_gaze:
-            pygame.draw.circle(win, (0, 255, 0), (gx, gy), 50, 5)  # cursor for the left eye
+
+        # left eye cursor (blue, empty circle)
+        if has_left_valid:
+            pygame.draw.circle(win, (0, 0, 255), (lx, ly), 55 , 5)
+
+        # right eye cursor (green, empty circle)
+        if has_right_valid:
+            pygame.draw.circle(win, (0, 255, 0), (rx, ry), 55, 5)
+
         pygame.display.flip()
 
 # ---- Stop sampling and save data ----
