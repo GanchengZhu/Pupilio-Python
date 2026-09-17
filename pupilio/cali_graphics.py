@@ -418,6 +418,7 @@ class CalibrationUI:
             self.stop_sound(self._sound_beep)
             self._finish_calibration()
         elif _status == ET_ReturnCode.ET_FAILED.value:
+            print('ET_FAILED: restarting from instructions if kappa verification is enabled')
             self.stop_sound(self._sound_beep)
             self._phase_calibration = False
             if self._should_prompt_on_calibration_failure():

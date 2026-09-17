@@ -163,7 +163,7 @@ data_dir = "./data"
 if not os.path.exists(data_dir):
     os.makedirs(data_dir)
 
-file_name = "deepgaze_demo.csv"
+file_name = "deepgaze_demo_400hz.csv"
 pupil_io.save_data(os.path.join(data_dir, file_name))
 
 # ---- Clean up ----

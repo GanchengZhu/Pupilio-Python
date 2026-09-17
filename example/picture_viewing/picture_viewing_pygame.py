@@ -50,6 +50,9 @@ pygame.init()
 scn_width, scn_height = (1920, 1080)
 win = pygame.display.set_mode((scn_width, scn_height), FULLSCREEN | HWSURFACE)
 
+# font for drawing
+font = pygame.font.SysFont("Arial", 48, bold=True)
+
 # ---- Configure the eye tracker ----
 # use a custom config file to control the tracker
 config = DefaultConfig()
@@ -59,14 +62,15 @@ config.face_previewing = 1
 
 # Heuristic filter, recommended look_ahead = 2 (i.e., a noisy spike is determined by
 # 4 flanking samples)
-config.look_ahead = 0
+config.look_ahead = 2
 
 # Set the sampling rate (for models that support 400/800/1000 Hz),
 # on the 200 Hz model, sampling rate will fall back to 200 Hz
-config.sampling_rate = 400
+config.sampling_rate = 200
 
 # Set the calibration mode (2-point, 4-point, 5-point)
-config.cali_mode = 4
+config.cali_mode = 5
+
 # alternatively, use the constants defined in .misc
 # config.cali_mode = CalibrationMode.FOUR_POINTS
 
@@ -107,7 +111,7 @@ for _img in images:
 
     # now lets show the gaze cursor, press any key to close the window
     got_key = False
-    max_duration = 60000
+    max_duration = 10000
     t_start = pygame.time.get_ticks()
     pygame.event.clear()  # clear all cached events if there were any
     gx, gy = -65536, -65536
@@ -144,11 +148,19 @@ for _img in images:
 
         # left eye cursor (blue, empty circle)
         if has_left_valid:
-            pygame.draw.circle(win, (0, 0, 255), (lx, ly), 55 , 5)
+            pygame.draw.circle(win, (0, 0, 255), (lx, ly), 55, 5)
+            l_label = font.render("L", True, (0, 0, 255))
+            l_rect = l_label.get_rect(center=(lx, ly))
+            win.blit(l_label, l_rect)
 
         # right eye cursor (green, empty circle)
         if has_right_valid:
             pygame.draw.circle(win, (0, 255, 0), (rx, ry), 55, 5)
+            r_label = font.render("R", True, (0, 255, 0))
+            r_rect = r_label.get_rect(center=(rx, ry))
+            win.blit(r_label, r_rect)
+
+        pygame.display.flip()
 
         pygame.display.flip()
 

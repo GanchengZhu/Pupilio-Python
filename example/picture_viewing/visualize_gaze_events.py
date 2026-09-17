@@ -1529,7 +1529,7 @@ def launch_gui(default_data="", default_images="", default_output=""):
 
 def main():
     parser = argparse.ArgumentParser(description="Pupilio Interactive Eye-Tracking & Event Detection Analyzer")
-    default_data = os.path.join(SCRIPT_DIR, "data", "deepgaze_demo.csv")
+    default_data = os.path.join(SCRIPT_DIR, "data", "deepgaze_demo_400hz.csv")
     default_images = os.path.join(SCRIPT_DIR, "images")
     default_output = os.path.join(SCRIPT_DIR, "output")
 
