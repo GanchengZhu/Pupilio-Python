@@ -66,7 +66,7 @@ config.look_ahead = 2
 
 # Set the sampling rate (for models that support 400/800/1000 Hz),
 # on the 200 Hz model, sampling rate will fall back to 200 Hz
-config.sampling_rate = 200
+config.sampling_rate = 400
 
 # Set the calibration mode (2-point, 4-point, 5-point)
 config.cali_mode = 5
@@ -111,7 +111,7 @@ for _img in images:
 
     # now lets show the gaze cursor, press any key to close the window
     got_key = False
-    max_duration = 10000
+    max_duration = 100000
     t_start = pygame.time.get_ticks()
     pygame.event.clear()  # clear all cached events if there were any
     gx, gy = -65536, -65536

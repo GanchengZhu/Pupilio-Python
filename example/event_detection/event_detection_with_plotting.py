@@ -97,40 +97,43 @@ for input_path in glob.glob(os.path.join(input_dir, '*.csv')):
     sample_idx = range(len(raw_full))
 
     # ---- Create the visualization ----
-    # Two subplots: top for X position, bottom for Y position
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+    # Single plot with both X and Y on the same axes
+    fig, ax = plt.subplots(figsize=(14, 6))
 
-    # Plot X gaze position over time
-    ax1.plot(sample_idx, raw_full[x_col], 'b-', linewidth=0.8, alpha=0.7, label='Gaze X')
-    ax1.set_ylabel('Gaze X (pixels)')
-    ax1.legend(loc='upper right')
-    ax1.grid(alpha=0.3)
+    # Plot X gaze position over time (thick blue line)
+    ax.plot(sample_idx, raw_full[x_col],
+            color='#0072BD', linewidth=2.8, alpha=0.9,
+            label='Gaze X')
 
-    # Plot Y gaze position over time
-    ax2.plot(sample_idx, raw_full[y_col], 'g-', linewidth=0.8, alpha=0.7, label='Gaze Y')
-    ax2.set_ylabel('Gaze Y (pixels)')
-    ax2.set_xlabel('Sample index (each row = one timestamp)')
-    ax2.legend(loc='upper right')
-    ax2.grid(alpha=0.3)
+    # Plot Y gaze position over time (thick orange/red line)
+    ax.plot(sample_idx, raw_full[y_col],
+            color='#D95319', linewidth=2.8, alpha=0.9,
+            label='Gaze Y')
+
+    ax.set_ylabel('Gaze position (pixels)', fontsize=12)
+    ax.set_xlabel('Sample index (each row = one timestamp)', fontsize=12)
+    ax.grid(alpha=0.3)
+    ax.legend(loc='upper right', fontsize=11, framealpha=0.9)
 
     # ---- Add vertical shaded regions for saccade periods ----
     for idx, saccade in saccades.iterrows():
         onset = saccade['onset_i']   # Start index (based on original data row)
         offset = saccade['offset_i'] # End index
 
-        # Add shaded region on both subplots
-        ax1.axvspan(onset, offset, alpha=0.2, color='orange',
-                    label='Saccade' if idx == 0 else "")
-        ax2.axvspan(onset, offset, alpha=0.2, color='orange')
+        # Add shaded region for saccade period on the single plot
+        ax.axvspan(onset, offset, alpha=0.2, color='orange',
+                   label='Saccade' if idx == 0 else "")
 
-        # Annotate with saccade number
+        # Annotate with saccade number near the top of the plot
         mid_point = (onset + offset) / 2
-        ax1.annotate(str(idx + 1),
-                     xy=(mid_point, ax1.get_ylim()[1] * 0.95),
-                     ha='center', fontsize=8, color='darkorange')
+        ax.annotate(str(idx + 1),
+                    xy=(mid_point, ax.get_ylim()[1] * 0.95),
+                    ha='center', fontsize=9, color='darkorange',
+                    fontweight='bold')
 
     # ---- Save the figure ----
-    ax1.set_title(f'Gaze X and Y over time with saccade periods\nFile: {base_filename}')
+    ax.set_title(f'Gaze X and Y over time with saccade periods\nFile: {base_filename}',
+                 fontsize=13)
     plt.tight_layout()
 
     # Save the plot with a clean filename (without the SAC_ prefix)
