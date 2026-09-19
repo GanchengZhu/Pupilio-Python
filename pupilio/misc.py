@@ -84,6 +84,7 @@ class ET_ReturnCode(IntEnum):
 
 class CalibrationMode(IntEnum):
     """Enum representing calibration modes"""
+    NO_CALI = 0
     TWO_POINTS = 2
     FOUR_POINTS = 4
     FIVE_POINTS = 5

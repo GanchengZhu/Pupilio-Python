@@ -119,6 +119,9 @@ class CalibrationUI:
 
         self._screen_width, self._screen_height = self.ui.get_screen_size()
 
+        # NEW: read calibration mode from config (default 1 = full calibration)
+        self._cali_mode = getattr(self.config, 'cali_mode', 2)
+
         import platform
         self._font_name = "microsoftyaheiui" if platform.system().lower() == 'windows' else "Arial"
 
@@ -305,11 +308,32 @@ class CalibrationUI:
             self._draw_text_center(instruction_text, x_offset=int(face_px_x - SCREEN_CENTER_X),
                                    y_offset=int(face_px_y + face_radius + 20 - SCREEN_CENTER_Y))
 
+        # if self._hands_free:
+        #     safe_z_range = (Z_SAFE_MIN <= face_mm_z <= Z_SAFE_MAX)
+        #     if safe_z_range and is_inside_bound and self._hands_free_adjust_head_wait_time <= 0:
+        #         self._phase_adjust_position = False
+        #         self._calibration_preparing = True
+        #     elif safe_z_range and is_inside_bound:
+        #         if self._hands_free_start_timestamp == 0:
+        #             self._hands_free_start_timestamp = time.time()
+        #         else:
+        #             now = time.time()
+        #             self._hands_free_adjust_head_wait_time -= (now - self._hands_free_start_timestamp)
+        #             self._hands_free_start_timestamp = now
+        #     else:
+        #         self._hands_free_start_timestamp = 0
+
         if self._hands_free:
             safe_z_range = (Z_SAFE_MIN <= face_mm_z <= Z_SAFE_MAX)
             if safe_z_range and is_inside_bound and self._hands_free_adjust_head_wait_time <= 0:
                 self._phase_adjust_position = False
-                self._calibration_preparing = True
+                if self._cali_mode > 0:
+                    self._calibration_preparing = True
+                else:
+                    # Skip instruction screen: jump straight into calibration
+                    self._phase_calibration = True
+                    if hasattr(self.config, 'calibration_listener') and self.config.calibration_listener:
+                        self.config.calibration_listener.on_calibration_target_onset(self._calibration_point_index)
             elif safe_z_range and is_inside_bound:
                 if self._hands_free_start_timestamp == 0:
                     self._hands_free_start_timestamp = time.time()
@@ -319,6 +343,7 @@ class CalibrationUI:
                     self._hands_free_start_timestamp = now
             else:
                 self._hands_free_start_timestamp = 0
+
 
     def _draw_previewer(self):
         """
@@ -389,6 +414,19 @@ class CalibrationUI:
             f"{self.config.instruction_calibration_over}"
         )
 
+    def _finish_calibration(self):
+        """
+        Leave the calibration phase for validation, or exit when validation is not wanted.
+        """
+        self._phase_calibration = False
+        self._phase_calibration_failed = False
+        if self._need_validation and self._cali_mode > 0:
+            self._validation_preparing = not self._hands_free
+            self._phase_validation = self._hands_free
+            self._clear_pending_input()
+        else:
+            self._exit = True
+
     def _draw_calibration_point(self):
         """
         Show the current calibration target and feed samples to the tracker.
@@ -443,15 +481,9 @@ class CalibrationUI:
         """
         Run the calibration routine, blocking until it finishes.
 
-        Drives the phase sequence head adjustment, calibration, and optionally validation,
-        dispatching on input from the backend each frame: continue advances to the next
-        phase, recali restarts from the validation result or calibration failure screen, and
-        quit aborts. Buffered input is dropped whenever a screen that waits for a response
-        appears, so a key pressed earlier cannot skip past it. Any existing calibration is
-        discarded before starting.
-
         Args:
             validate (bool): Whether to run validation and show the accuracy report.
+                Ignored (forced to False) when ``config.cali_mode == 0``.
             bg_color (tuple): Background colour as RGB 0-255.
             hands_free (bool): When True, phases advance on timers rather than waiting for
                 participant input.
@@ -459,9 +491,13 @@ class CalibrationUI:
         self._pupil_io._recalibration()
         self.initialize_variables()
         self._hands_free = hands_free
-        self._need_validation = validate
-        self._clear_pending_input()
 
+        # NEW: cali_mode == 0 disables validation and the instruction screen entirely
+        if self._cali_mode == 0:
+            validate = False
+        self._need_validation = validate
+
+        self._clear_pending_input()
         self.ui.set_mouse_visible(getattr(self.config, 'simulation_mode', 0) == 1)
 
         while not self._exit:
@@ -473,7 +509,14 @@ class CalibrationUI:
             elif action == 'continue':
                 if self._phase_adjust_position:
                     self._phase_adjust_position = False
-                    self._calibration_preparing = True
+                    if self._cali_mode > 0:
+                        # Show calibration instruction screen as before
+                        self._calibration_preparing = True
+                    else:
+                        # Skip instruction screen: jump straight into calibration
+                        self._phase_calibration = True
+                        if hasattr(self.config, 'calibration_listener') and self.config.calibration_listener:
+                            self.config.calibration_listener.on_calibration_target_onset(self._calibration_point_index)
                     self._clear_pending_input()
                 elif self._calibration_preparing:
                     self._calibration_preparing = False
@@ -527,6 +570,95 @@ class CalibrationUI:
         self.stop_sound(self._sound_beep)
         self.stop_sound(self._sound_ins)
         self.stop_sound(self._sound_pos)
+
+    # def draw(self, validate=False, bg_color=(255, 255, 255), hands_free=False):
+    #     """
+    #     Run the calibration routine, blocking until it finishes.
+    #
+    #     Drives the phase sequence head adjustment, calibration, and optionally validation,
+    #     dispatching on input from the backend each frame: continue advances to the next
+    #     phase, recali restarts from the validation result or calibration failure screen, and
+    #     quit aborts. Buffered input is dropped whenever a screen that waits for a response
+    #     appears, so a key pressed earlier cannot skip past it. Any existing calibration is
+    #     discarded before starting.
+    #
+    #     Args:
+    #         validate (bool): Whether to run validation and show the accuracy report.
+    #         bg_color (tuple): Background colour as RGB 0-255.
+    #         hands_free (bool): When True, phases advance on timers rather than waiting for
+    #             participant input.
+    #     """
+    #     self._pupil_io._recalibration()
+    #     self.initialize_variables()
+    #     self._hands_free = hands_free
+    #     self._need_validation = validate
+    #     self._clear_pending_input()
+    #
+    #     self.ui.set_mouse_visible(getattr(self.config, 'simulation_mode', 0) == 1)
+    #
+    #     while not self._exit:
+    #         self.ui.before_draw(bg_color)
+    #
+    #         action = self.ui.check_action()
+    #         if action == 'quit':
+    #             self._exit = True
+    #         elif action == 'continue':
+    #             if self._phase_adjust_position:
+    #                 self._phase_adjust_position = False
+    #                 self._calibration_preparing = True
+    #                 self._clear_pending_input()
+    #             elif self._calibration_preparing:
+    #                 self._calibration_preparing = False
+    #                 self._phase_calibration = True
+    #                 self._clear_pending_input()
+    #                 if hasattr(self.config, 'calibration_listener') and self.config.calibration_listener:
+    #                     self.config.calibration_listener.on_calibration_target_onset(self._calibration_point_index)
+    #             elif self._phase_calibration_failed:
+    #                 # Accept the imperfect calibration and carry on.
+    #                 self._clear_pending_input()
+    #                 self._finish_calibration()
+    #             elif self._validation_preparing:
+    #                 self._validation_preparing = False
+    #                 self._phase_validation = True
+    #                 self._clear_pending_input()
+    #             elif self._phase_validation and self._drawing_validation_result:
+    #                 self._phase_validation = False
+    #                 self._clear_pending_input()
+    #         elif action == 'toggle_preview':
+    #             if self._phase_adjust_position:
+    #                 self.config.face_previewing = not getattr(self.config, 'face_previewing', True)
+    #         elif action == 'recali' and (self._drawing_validation_result or self._phase_calibration_failed):
+    #             self._phase_validation = False
+    #             self._drawing_validation_result = False
+    #             self._phase_calibration_failed = False
+    #             self.draw(self._need_validation, bg_color, self._hands_free)
+    #             return
+    #
+    #         if self._phase_adjust_position:
+    #             if self.config.face_previewing:
+    #                 self._draw_previewer()
+    #             self._draw_adjust_position()
+    #         elif self._calibration_preparing:
+    #             self._draw_text_center(self.config.instruction_enter_calibration)
+    #         elif self._phase_calibration:
+    #             self._draw_calibration_point()
+    #         elif self._phase_calibration_failed:
+    #             self._draw_calibration_failed()
+    #         elif self._validation_preparing:
+    #             self._draw_text_center(self.config.instruction_enter_validation)
+    #         elif self._phase_validation:
+    #             self._draw_validation_point()
+    #         else:
+    #             self._exit = True
+    #
+    #         self.ui.after_draw()
+    #
+    #     # Restore mouse visibility when exiting the calibration UI
+    #     self.ui.set_mouse_visible(True)
+    #
+    #     self.stop_sound(self._sound_beep)
+    #     self.stop_sound(self._sound_ins)
+    #     self.stop_sound(self._sound_pos)
 
     def draw_hands_free(self, validate=False, bg_color=(255, 255, 255)):
         """

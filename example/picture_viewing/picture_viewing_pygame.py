@@ -87,7 +87,7 @@ pupil_io.create_session(session_name="deepgaze_demo")
 
 # ---- Calibrate and validate ----
 # set 'validate' to True if you would like to verify the calibration results
-pupil_io.calibration_draw(validate=True, hands_free=False, screen=win)
+pupil_io.calibration_draw(validate=False, hands_free=False, screen=win)
 
 # ---- Start retrieving gaze data ----
 # start retrieving gaze

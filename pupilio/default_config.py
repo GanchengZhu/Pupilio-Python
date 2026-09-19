@@ -251,6 +251,8 @@ class DefaultConfig:
     def cali_mode(self, mode):
         if isinstance(mode, CalibrationMode):
             self._cali_mode = mode
+        elif mode == 0:
+            self._cali_mode = CalibrationMode.NO_CALI
         elif mode == 2:
             self._cali_mode = CalibrationMode.TWO_POINTS
         elif mode == 5:
@@ -258,7 +260,7 @@ class DefaultConfig:
         elif mode == 4:
             self._cali_mode = CalibrationMode.FOUR_POINTS
         else:
-            raise ValueError("Invalid calibration mode. Must be 2, 4, 5, or a CalibrationMode instance.")
+            raise ValueError("Invalid calibration mode. Must be 0, 2, 4, 5, or a CalibrationMode instance.")
 
         # Update instructions when mode changes
         self.instruction_language(self._lang)  # Re-generate instructions with new mode
