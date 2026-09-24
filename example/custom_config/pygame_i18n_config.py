@@ -1,4 +1,4 @@
-# _*_ coding: utf-8 _*_
+# -*- coding: utf-8 -*-
 
 # Copyright (c) 2026, Hangzhou DeepGaze Science and Technology Co., Ltd
 # All Rights Reserved
@@ -42,7 +42,7 @@
 
 # Author: Gancheng Zhu
 # Email: zhugc2016@gmail.com
-# Last updated: 6/21/2026 by Zhiguo Wang
+# Last updated: 2026-06-21 by Zhiguo Wang
 
 import os
 import pygame
@@ -50,15 +50,15 @@ from pygame.locals import FULLSCREEN, HWSURFACE
 from pupilio import Pupilio, DefaultConfig
 from pupilio.misc import CalibrationMode
 
-# Configure the eye tracker
-# A custom config file allows fine control over tracker parameters
+# Configure the eye tracker.
+# A custom config object allows fine control over tracker parameters.
 config = DefaultConfig()
 
-# Show face preview during calibration (1 = enable, 0 = disable)
+# Show face preview during calibration (1 = enable, 0 = disable).
 config.face_previewing = 1
 
-# Set the instruction language for the calibration UI
-# English (default)
+# Set the instruction language for the calibration UI.
+# English (default).
 config.instruction_language(lang='en-US')
 
 # Alternative languages (uncomment to use):
@@ -69,49 +69,56 @@ config.instruction_language(lang='en-US')
 # config.instruction_language(lang='jp-JP')  # Japanese
 # config.instruction_language(lang='ko-KR')  # Korean
 
-# Heuristic filter: recommended look_ahead = 2
-# A noisy spike is determined by 4 flanking samples
+# Heuristic filter: recommended look_ahead = 2.
+# A sample is treated as a noisy spike based on 2 samples before and 2 after it
+# (4 flanking samples total).
 config.look_ahead = 2
 
 # Active eye selection:
 # 0 = binocular (both eyes), -1 = left eye only, 1 = right eye only
 config.active_eye = 0
 
-# Set the API to run in gaze simulation mode
-# 0 = use real hardware, 1 = simulate with mouse (useful for testing without hardware)
+# Set the API to run in gaze simulation mode.
+# 0 = use real hardware, 1 = simulate with mouse (useful for testing without hardware).
 config.simulation_mode = 0
 
-# Calibration mode: 2-point vs. 5-point
+# Calibration modes (valid values: 0, 2, 4, 5).
 # Both integer values and enum constants are supported:
+# config.cali_mode = 0                        # skip calibration
+# config.cali_mode = CalibrationMode.NO_CALI  # skip calibration
+# config.cali_mode = 2                        # two-point
 # config.cali_mode = CalibrationMode.TWO_POINTS
+# config.cali_mode = 4                        # four-point
+# config.cali_mode = CalibrationMode.FOUR_POINTS
+# config.cali_mode = 5                        # five-point
 # config.cali_mode = CalibrationMode.FIVE_POINTS
-# config.cali_mode = 2  (two-point)
-# config.cali_mode = 5  (five-point)
 config.cali_mode = 2
 
-# Initialize Pygame and create a fullscreen window
+# Initialize Pygame and create a fullscreen window.
 pygame.init()
 scn_width, scn_height = (1920, 1080)
 win = pygame.display.set_mode((scn_width, scn_height), FULLSCREEN | HWSURFACE)
 pygame.display.set_caption("Language Configuration Demo")
 pygame.mouse.set_visible(False)
 
-# Initialize the tracker with custom configuration
+# Initialize the tracker with custom configuration.
 pupil_io = Pupilio(config)
 
-# Create a task session
-# Session name must contain only letters, digits, underscores, hyphens, plus signs, or parentheses
-# Spaces are not allowed - replace with underscores if needed
+# Create a task session.
+# Session name must contain only letters, digits, underscores, hyphens,
+# plus signs, or parentheses.
+# Spaces are not allowed - replace with underscores if needed.
 pupil_io.create_session(session_name="language_demo")
 
-# Perform calibration and validation
-# validate=True verifies calibration results after completion
+# Perform calibration and validation.
+# validate=True verifies calibration results after completion.
+# hands_free=False requires the participant to press a key to advance between targets.
 pupil_io.calibration_draw(validate=True, hands_free=False, screen=win)
 
-# Start streaming gaze data from the tracker
+# Start streaming gaze data from the tracker.
 pupil_io.start_sampling()
 
-# Display a message on screen and record data for 5 seconds
+# Display a message on screen and record data for 5 seconds.
 msg = 'Recording... Script will terminate in 5 seconds.'
 font = pygame.font.SysFont('Arial', 32)
 _w, _h = font.size(msg)
@@ -122,18 +129,17 @@ pygame.display.flip()
 
 pygame.time.wait(5 * 1000)  # Wait for 5 seconds
 
-# Stop eye tracking sampling
+# Stop eye tracking sampling.
 pupil_io.stop_sampling()
 
-# Allow time to capture ending samples
+# Allow time to capture ending samples.
 pygame.time.wait(100)
 
-# Save the recorded eye movement data to a file
+# Save the recorded eye movement data to a file.
 data_dir = "./data"
 os.makedirs(data_dir, exist_ok=True)
 pupil_io.save_data(os.path.join(data_dir, "language_demo.csv"))
 
-# Release tracker resources and quit Pygame
+# Release tracker resources and quit Pygame.
 pupil_io.release()
 pygame.quit()
-print("Done.")

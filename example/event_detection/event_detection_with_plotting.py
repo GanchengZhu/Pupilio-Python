@@ -1,4 +1,4 @@
-# _*_ coding: utf-8 _*_
+# -*- coding: utf-8 -*-
 
 # Copyright (c) 2026, Hangzhou DeepGaze Science and Technology Co., Ltd
 # All Rights Reserved
@@ -28,45 +28,57 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # DESCRIPTION:
-# Eye Movement Data Analysis Script
+# Eye movement data analysis script.
 # This script processes eye tracking data files by:
 # 1. Detecting fixations, saccades, and blinks using the Pupilio EventDetection library
 # 2. Visualizing gaze position over time with saccade periods highlighted
 # 3. Saving the results to an output directory
+# 4. Displaying each plot in a pop-up window
 
 # Author: Gancheng Zhu
-# Last updated: 6/21/2026 by Zhiguo Wang
+# Email: zhugc2016@gmail.com
+# Last updated: 2026-06-21 by Zhiguo Wang
 
-import os
-import pandas as pd
-import matplotlib.pyplot as plt
-from pupilio import EventDetection
 import glob
+import os
 
-# ---- Initialize the event detector ----
-ed = EventDetection(simulation_mode=1)
+import matplotlib.pyplot as plt
+import pandas as pd
 
-# ---- Define input and output directories ----
+from pupilio import EventDetection
+
+#- Initialize the event detector
+ed = EventDetection()
+
+#- Define input and output directories
 input_dir = 'data'
 output_dir = 'output'
 os.makedirs(output_dir, exist_ok=True)
 
-# Which eye to detect and plot: 'left', 'right', or 'bino'
+# Which eye to detect and plot: 'left', 'right', or 'both'.
 which_eye = 'right'
 
-# ---- Process each CSV file in the input directory ----
+# Column name for the gaze timestamp in the raw CSV.
+# Change this if your recording uses a different column name.
+timestamp_col = 'timestamp'
+
+# Gaze timestamps in the raw CSV are stored in nanoseconds.
+# They are converted to seconds for plotting.
+NS_PER_S = 1e9
+
+#- Process each CSV file in the input directory
 for input_path in glob.glob(os.path.join(input_dir, '*.csv')):
     print(f"\nProcessing: {input_path}")
 
-    # Get the base filename without extension for naming outputs
+    # Get the base filename without extension for naming outputs.
     base_filename = os.path.splitext(os.path.basename(input_path))[0]
 
-    # ---- Run eye movement event detection ----
-    # This generates files: BLK_ (blinks), FIX_ (fixations), SAC_ (saccades)
+    #- Run eye movement event detection
+    # This generates files: BLK_ (blinks), FIX_ (fixations), SAC_ (saccades).
     ed.detect(input_path, output_dir=output_dir, which_eye=which_eye)
 
-    # ---- Load saccade results ----
-    # The SAC_ file naming convention: SAC_{original_filename}.csv
+    #- Load saccade results
+    # The SAC_ file naming convention is: SAC_{base_filename}.csv
     sac_filename = f"SAC_{base_filename}.csv"
     sac_file = os.path.join(output_dir, sac_filename)
 
@@ -77,72 +89,100 @@ for input_path in glob.glob(os.path.join(input_dir, '*.csv')):
     saccades = pd.read_csv(sac_file)
     print(f"Detected {len(saccades)} saccades")
 
-    # ---- Load original raw eye tracking data ----
+    #- Load original raw eye tracking data
     raw_data = pd.read_csv(input_path)
     print(f"Total samples: {len(raw_data)}")
 
-    # ---- Prepare gaze data for plotting ----
-    # Set invalid gaze points to NaN so matplotlib will break the line
+    if timestamp_col not in raw_data.columns:
+        print(f"Warning: Timestamp column '{timestamp_col}' not found. "
+              f"Available columns: {list(raw_data.columns)}")
+        continue
+
+    #- Prepare gaze data for plotting
+    # Set invalid gaze points to NaN so matplotlib will break the line.
     x_col = f'{which_eye}_eye_gaze_position_x'
     y_col = f'{which_eye}_eye_gaze_position_y'
     valid_col = f'{which_eye}_eye_valid'
 
     raw_full = raw_data.copy()
 
-    # Replace invalid gaze positions with NaN to create gaps in the plot
+    # Convert gaze timestamps from nanoseconds to seconds.
+    time_s = raw_full[timestamp_col] / NS_PER_S
+
+    # Replace invalid gaze positions with NaN to create gaps in the plot.
     raw_full.loc[raw_full[valid_col] != 1, x_col] = float('nan')
     raw_full.loc[raw_full[valid_col] != 1, y_col] = float('nan')
 
-    # Create x-axis: sample indices (each row = one timestamp)
-    sample_idx = range(len(raw_full))
-
-    # ---- Create the visualization ----
-    # Single plot with both X and Y on the same axes
+    #- Create the visualization
+    # Single plot with both X and Y on the same axes.
     fig, ax = plt.subplots(figsize=(14, 6))
 
-    # Plot X gaze position over time (thick blue line)
-    ax.plot(sample_idx, raw_full[x_col],
+    # Plot X gaze position over time (thick blue line).
+    ax.plot(time_s, raw_full[x_col],
             color='#0072BD', linewidth=2.8, alpha=0.9,
-            label='Gaze X')
+            label='Gaze X', zorder=3)
 
-    # Plot Y gaze position over time (thick orange/red line)
-    ax.plot(sample_idx, raw_full[y_col],
+    # Plot Y gaze position over time (thick orange/red line).
+    ax.plot(time_s, raw_full[y_col],
             color='#D95319', linewidth=2.8, alpha=0.9,
-            label='Gaze Y')
+            label='Gaze Y', zorder=3)
 
     ax.set_ylabel('Gaze position (pixels)', fontsize=12)
-    ax.set_xlabel('Sample index (each row = one timestamp)', fontsize=12)
+    ax.set_xlabel('Time (s)', fontsize=12)
     ax.grid(alpha=0.3)
-    ax.legend(loc='upper right', fontsize=11, framealpha=0.9)
 
-    # ---- Add vertical shaded regions for saccade periods ----
+    #- Highlight saccade periods with shaded vertical strips
+    # onset_i and offset_i are sample indices into the raw data. They are
+    # looked up in the time_s series to obtain the corresponding times in
+    # seconds, so the strips align with the x-axis. zorder=2 keeps the
+    # strips behind the gaze traces (zorder=3) so the traces stay visible.
     for idx, saccade in saccades.iterrows():
-        onset = saccade['onset_i']   # Start index (based on original data row)
-        offset = saccade['offset_i'] # End index
+        onset_i = int(saccade['onset_i'])    # sample index of saccade start
+        offset_i = int(saccade['offset_i'])  # sample index of saccade end
 
-        # Add shaded region for saccade period on the single plot
-        ax.axvspan(onset, offset, alpha=0.2, color='orange',
+        # Guard against out-of-range indices in case of a corrupt file.
+        if not (0 <= onset_i < len(time_s) and 0 <= offset_i < len(time_s)):
+            print(f"Warning: Saccade {idx + 1} has out-of-range indices "
+                  f"(onset_i={onset_i}, offset_i={offset_i}); skipping.")
+            continue
+
+        onset_s = time_s.iloc[onset_i]    # saccade start time (s)
+        offset_s = time_s.iloc[offset_i]  # saccade end time (s)
+
+        # Shaded vertical strip spanning the saccade interval
+        # (only the first one carries the legend label).
+        ax.axvspan(onset_s, offset_s,
+                   alpha=0.3, color='orange',
+                   edgecolor='darkorange', linewidth=0.8,
+                   zorder=2,
                    label='Saccade' if idx == 0 else "")
 
-        # Annotate with saccade number near the top of the plot
-        mid_point = (onset + offset) / 2
+        # Annotate with saccade number near the top of the plot, centered
+        # between the strip's edges.
+        mid_point = (onset_s + offset_s) / 2
         ax.annotate(str(idx + 1),
                     xy=(mid_point, ax.get_ylim()[1] * 0.95),
                     ha='center', fontsize=9, color='darkorange',
-                    fontweight='bold')
+                    fontweight='bold', zorder=4)
 
-    # ---- Save the figure ----
+    # Legend must be added after the saccade strips so it picks up the
+    # 'Saccade' entry created inside the loop.
+    ax.legend(loc='upper right', fontsize=11, framealpha=0.9)
+
+    #- Save the figure
     ax.set_title(f'Gaze X and Y over time with saccade periods\nFile: {base_filename}',
                  fontsize=13)
     plt.tight_layout()
 
-    # Save the plot with a clean filename (without the SAC_ prefix)
+    # Save the plot using the original filename as a base.
     output_plot = os.path.join(output_dir, f'saccade_trace_{base_filename}.png')
     plt.savefig(output_plot, dpi=150, bbox_inches='tight')
     print(f"Plot saved to: {output_plot}")
 
-    # Display the plot (uncomment if you want to see it interactively)
-    plt.show()
+    #- Show the plot in a pop-up window
+    # block=True makes the call block until the window is closed, so each
+    # file is reviewed one at a time before the loop continues.
+    plt.show(block=True)
 
-    # Close the figure to free memory
+    # Close the figure to free memory before processing the next file.
     plt.close(fig)

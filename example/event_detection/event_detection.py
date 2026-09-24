@@ -1,4 +1,4 @@
-# _*_ coding: utf-8 _*_
+# -*- coding: utf-8 -*-
 
 # Copyright (c) 2026, Hangzhou DeepGaze Science and Technology Co., Ltd
 # All Rights Reserved
@@ -28,31 +28,45 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # DESCRIPTION:
-# Batch eye movement event detection script
+# Batch eye movement event detection script.
 # Processes all CSV files in the 'data' directory and detects:
 # - Fixations (FIX_)
 # - Saccades (SAC_)
 # - Blinks (BLK_)
 # Results are saved to the 'output' directory.
 
-# Author: GC Zhu
+# Author: Gancheng Zhu
 # Email: zhugc2016@gmail.com
 
 import glob
 import os
 from pupilio import EventDetection
 
-# ---- Initialize the event detector ----
+#- Configuration
+# Directory containing the recorded eye-tracking CSV files.
+data_dir = 'data'
+
+# Directory where the detected-event files will be written.
+out_dir = 'output'
+
+# Eye to use for event detection.
+# Common values: 'left', 'right', 'both'.
+which_eye = 'right'
+
+# Initialize the event detector
 ed = EventDetection()
 
-# ---- Define output directory ----
-out_dir = 'output'
+# Process all CSV files in the data directory.
 os.makedirs(out_dir, exist_ok=True)
 
-# ---- Process all CSV files in the data directory ----
-for file_path in glob.glob('data/*.csv'):
+csv_files = glob.glob(os.path.join(data_dir, '*.csv'))
+
+for file_path in csv_files:
     print(f"Processing: {file_path}")
-    ed.detect(file_path, output_dir=out_dir, which_eye='right')
+    ed.detect(file_path, output_dir=out_dir, which_eye=which_eye)
     print(f"Completed: {file_path}")
 
-print("\nAll files processed successfully!")
+if csv_files:
+    print(f"\nAll {len(csv_files)} file(s) processed successfully!")
+else:
+    print(f"\nNo CSV files found in '{data_dir}'.")

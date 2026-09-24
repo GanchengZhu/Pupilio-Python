@@ -687,32 +687,32 @@ class Pupilio:
             raise RuntimeError(f"pupil_io_get_camera_mode failed with code {ret}")
         return int(mode[0]), left_roi, right_roi
 
-    def previewer_start(self, udp_host: str, udp_port: int, draw_preview_annotations: bool = True):
+    def previewer_start(self, udp_host: str, udp_port: int,
+                        draw_preview_annotations: bool = True) -> None:
         """
         Start streaming the camera preview over UDP.
 
-        Initialises the previewer and then starts it, so the images can be consumed by a
-        remote viewer rather than drawn locally.
-
-        Args:
-            udp_host (str): Destination IP address for the video stream.
-            udp_port (int): Destination UDP port.
-            draw_preview_annotations (bool): Whether the stream includes the eye boxes,
-                glints, and pupil markers. Defaults to True.
+        ...
 
         Raises:
-            Exception: If ``udp_host`` is not a valid IP address.
+            ValueError: If ``udp_host`` is not a valid IP address.
+            RuntimeError: If ``pupil_io_previewer_init`` or ``pupil_io_previewer_start``
+                returns a non-success code.
         """
         try:
             ipaddress.ip_address(udp_host)
         except ValueError:
-            raise Exception(f"Invalid IP address: {udp_host}.")
-        ret_init = self._et_native_lib.pupil_io_previewer_init(udp_host.encode('gbk'), udp_port, draw_preview_annotations)
+            raise ValueError(f"Invalid IP address: {udp_host}.")
+
+        ret_init = self._et_native_lib.pupil_io_previewer_init(
+            udp_host.encode('gbk'), udp_port, draw_preview_annotations
+        )
         if ret_init != ET_ReturnCode.ET_SUCCESS.value:
-            logger.warning(f"pupil_io_previewer_init returned non-success code: {ret_init}")
+            raise RuntimeError(f"pupil_io_previewer_init failed with code {ret_init}.")
+
         ret_start = self._et_native_lib.pupil_io_previewer_start()
         if ret_start != ET_ReturnCode.ET_SUCCESS.value:
-            logger.warning(f"pupil_io_previewer_start returned non-success code: {ret_start}")
+            raise RuntimeError(f"pupil_io_previewer_start failed with code {ret_start}.")
 
     def previewer_stop(self):
         """
@@ -1280,10 +1280,30 @@ class Pupilio:
 
         ui = CalibrationUI(pupil_io=self, ui_backend=ui_backend)
 
+        # if not hands_free:
+        #     ui.draw(validate=validate, bg_color=bg_color)
+        # else:
+        #     ui.draw_hands_free(validate=validate, bg_color=bg_color)
+
         if not hands_free:
             ui.draw(validate=validate, bg_color=bg_color)
         else:
             ui.draw_hands_free(validate=validate, bg_color=bg_color)
+
+        # ---- The native calibration routine leaves its own sampling thread
+        # ---- running after it finishes. If we don't stop it here, a later
+        # ---- start_sampling() will be rejected either by the Python guard or
+        # ---- by pupil_io_start_sampling() itself.
+        try:
+            if self.get_sampling_status():
+                logger.info(
+                    "[PupilioET] Calibration left sampling active; stopping it "
+                    "so start_sampling() can be called afterwards."
+                )
+                self.stop_sampling()
+        except Exception as exc:
+            logger.warning(f"[PupilioET] Failed to stop leftover sampling: {exc}")
+
 
     @deprecated("1.1.2")
     def subscribe_sample(self, subscriber_func: Callable, args=(), kwargs=None):

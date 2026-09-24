@@ -1,8 +1,9 @@
-# _*_ coding: utf-8 _*_
-# Copyright (c) 2024, Hangzhou Deep Gaze Sci & Tech Ltd
+# -*- coding: utf-8 -*-
+
+# Copyright (c) 2026, Hangzhou DeepGaze Science and Technology Co., Ltd
 # All Rights Reserved
 #
-# For use by  Hangzhou Deep Gaze Sci & Tech Ltd licencees only.
+# For use by Hangzhou DeepGaze Science and Technology Co., Ltd licensees only.
 # Redistribution and use in source and binary forms, with or without
 # modification, are NOT permitted.
 #
@@ -10,7 +11,7 @@
 # notice, this list of conditions and the following disclaimer in
 # the documentation and/or other materials provided with the distribution.
 #
-# Neither name of  Hangzhou Deep Gaze Sci & Tech Ltd nor the name of
+# Neither name of Hangzhou DeepGaze Sci & Tech Ltd nor the name of
 # contributors may be used to endorse or promote products derived from
 # this software without specific prior written permission.
 #
@@ -27,37 +28,40 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # DESCRIPTION:
-# This demo shows how to receive real-time face images through a UDP connection
+# This demo shows how to receive real-time face images over a UDP connection.
 
-# Author: GC Zhu
+# Author: Gancheng Zhu
 # Email: zhugc2016@gmail.com
+# Last updated: 2026-06-21 by Zhiguo Wang
 
 import socket
-import numpy as np
+
 import cv2
+import numpy as np
 
-# open a socket
+# Server address and port to listen on (local connection in this example).
+server_address = ('127.0.0.1', 8848)
+
+# Maximum size, in bytes, of a single UDP datagram to receive.
+buffer_size = 1024 * 1024
+
+# Open a UDP socket and bind it to the server address.
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.bind(server_address)
 
-# specify the server address (local connection in this example)
-sock.bind(('127.0.0.1', 8848))
-
-# open a CV window to show the received face images
+# Open a CV window to show the received face images.
 cv2.namedWindow('Video', cv2.WINDOW_NORMAL)
 
+# Receive and display frames until the user presses Q/q.
 while True:
-    # send testing message to the UDP server
-    # message = b'Test message'
-    # sock.sendto(message, server_address)
+    # Receive data.
+    data, addr = sock.recvfrom(buffer_size)
 
-    # receive data
-    data, addr = sock.recvfrom(1024 * 1024)
-
-    # break when there is no data
+    # Break when there is no data.
     if not data:
         break
 
-    # data to images
+    # Decode the received bytes into an image.
     np_data = np.frombuffer(data, np.uint8)
     frame = cv2.imdecode(np_data, cv2.IMREAD_GRAYSCALE)
 
@@ -65,12 +69,13 @@ while True:
         print("Received invalid frame.")
         continue
 
-    # show the captured frames
+    # Show the captured frame.
     cv2.imshow('Video', frame)
 
-    # press Q/q to exit the script
+    # Press Q/q to exit the script.
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
+# Clean up.
 sock.close()
 cv2.destroyAllWindows()
