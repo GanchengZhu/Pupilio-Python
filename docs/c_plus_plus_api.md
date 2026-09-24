@@ -46,6 +46,14 @@ Both layers return the same numeric codes. `pupil_io_et.h` names them `PupilioRe
 The core layer's `ET_ReturnCode` declares only 0, 1, 2, and 9, but the library may return
 any of the values above. Always compare against the full set.
 
+### Error details (`pupil_io_get_last_error`)
+
+```cpp
+const char *pupil_io_get_last_error();
+```
+
+When an API function returns a failure status code (such as `PUPILIO_ET_FAILED` or `PUPILIO_ET_EXCEPTION`), call `pupil_io_get_last_error()` to obtain detailed diagnostic information. Returns a pointer to a null-terminated string describing the most recent native error (for example Winsock network errors such as `WSAEMSGSIZE 10040`, driver failures, or internal exceptions). The string buffer is owned by the library; do not free or modify it.
+
 ## Camera modes
 
 The frame rate mode is decided at runtime by the `camera_mode` field of
@@ -364,16 +372,40 @@ gaze-contingent displays. Each array holds 3 floats: validity flag, x, y.
 
 ## Preview
 
-### `pupil_io_previewer_init` / `_start` / `_stop`
+### `pupil_io_previewer_init` / `_init_ex` / `_start` / `_stop`
 
 ```cpp
-PupilioReturn pupil_io_previewer_init(const char *udp_address, int port, bool draw_preview_annotation = true);
+PupilioReturn pupil_io_previewer_init_ex(const char *udp_address, int port,
+                                         bool draw_preview_annotation = true,
+                                         int target_fps = 30);
+PupilioReturn pupil_io_previewer_init(const char *udp_address, int port,
+                                      bool draw_preview_annotation = true);
 PupilioReturn pupil_io_previewer_start();
 PupilioReturn pupil_io_previewer_stop();
 ```
 
 Streams the camera preview over UDP to `udp_address:port`. With `draw_preview_annotation`
 set, the stream includes eye boxes, pupil markers, and glint markers.
+
+- **`target_fps`**: Desired streaming rate in frames per second (e.g. 30, 60, 100, 200, 400; default 30).
+  Frame pacing is driven by a high-precision multimedia timer (`timeBeginPeriod(1)` hybrid sleep/yield clock controller).
+  Passing `target_fps <= 0` streams frames without pacing as fast as the camera hardware produces them.
+- **Hardware limit warning**: If the requested target FPS cannot be sustained (for example, requesting 400 FPS
+  while the camera hardware is operating in 200 Hz mode), the previewer thread measures actual throughput and outputs
+  a diagnostic warning (`[WARN] Target preview FPS (...) cannot be reached. Actual FPS: ...`) **exactly once**.
+- **Datagram size safety**: Preview frames are compressed as JPEG datagrams with adaptive 3-stage quality fallback
+  and payload size constraints (<= 60,000 bytes) to prevent UDP buffer overflow (`WSAEMSGSIZE 10040`).
+
+### `pupil_io_previewer_set_fps` / `pupil_io_previewer_get_fps`
+
+```cpp
+PupilioReturn pupil_io_previewer_set_fps(int fps);
+int pupil_io_previewer_get_fps();
+```
+
+`pupil_io_previewer_set_fps` dynamically adjusts the target preview streaming rate while streaming is running without
+requiring a restart. `pupil_io_previewer_get_fps` returns the currently configured target frame rate in FPS (or -1 if
+the previewer has not been initialized).
 
 ### `pupil_io_get_previewer`
 

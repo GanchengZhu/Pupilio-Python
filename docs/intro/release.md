@@ -1,5 +1,17 @@
 # Pupilio SDK Update Log
 
+## Version 1.5.1 (Build 1) - 2026-09-24
+
+- **Configurable UDP Previewer Frame Rate**:
+  - Added support for specifying preview frame rates (e.g. 30, 60, 100, 200, 400 FPS; default 30 FPS) via `pupil_io_previewer_init_ex` and Python `pupil_io.previewer_start(..., fps=30)`.
+  - Added runtime dynamic FPS adjustment via `pupil_io_previewer_set_fps(fps)` and `pupil_io.previewer_set_fps(fps)`, and current FPS query via `previewer_get_fps()`.
+  - High-precision clock pacing: Integrated Windows multimedia timer (`timeBeginPeriod(1)`) with a hybrid sleep/yield clock controller for jitter-free sub-millisecond pacing.
+  - One-time diagnostic warning: If target frame rate cannot be reached (e.g. asking 400 FPS in 200Hz camera mode), a single warning is emitted stating the target and actual achieved FPS.
+- **Detailed Error Reporting**:
+  - Added `pupil_io_get_last_error()` and Python `pupil_io.get_last_error()` to retrieve detailed Winsock, driver, and system error strings.
+- **UDP Datagram Safety & 10040 Fix**:
+  - Resolved `WSAEMSGSIZE (10040)` errors by implementing adaptive 3-stage JPEG quality compression and payload safety bounds (<= 60,000 bytes) to prevent UDP packet overflow.
+
 ## Version 1.5.0 (Build 1) - 2026-09-08
 
 - Added native LabStreamingLayer (LSL) support for multi-modal real-time synchronization (EEG, fNIRS, EMG, etc.).

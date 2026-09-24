@@ -238,6 +238,24 @@ class Pupilio:
             self._et_native_lib.get_version.restype = ctypes.c_char_p
             self._et_native_lib.get_version.argtypes = []
 
+        if hasattr(self._et_native_lib, "pupil_io_previewer_init_ex"):
+            self._et_native_lib.pupil_io_previewer_init_ex.restype = ctypes.c_int
+            self._et_native_lib.pupil_io_previewer_init_ex.argtypes = [
+                ctypes.c_char_p, ctypes.c_int, ctypes.c_bool, ctypes.c_int
+            ]
+
+        if hasattr(self._et_native_lib, "pupil_io_previewer_set_fps"):
+            self._et_native_lib.pupil_io_previewer_set_fps.restype = ctypes.c_int
+            self._et_native_lib.pupil_io_previewer_set_fps.argtypes = [ctypes.c_int]
+
+        if hasattr(self._et_native_lib, "pupil_io_previewer_get_fps"):
+            self._et_native_lib.pupil_io_previewer_get_fps.restype = ctypes.c_int
+            self._et_native_lib.pupil_io_previewer_get_fps.argtypes = []
+
+        if hasattr(self._et_native_lib, "pupil_io_get_last_error"):
+            self._et_native_lib.pupil_io_get_last_error.restype = ctypes.c_char_p
+            self._et_native_lib.pupil_io_get_last_error.argtypes = []
+
         version = self._et_native_lib.pupil_io_get_version()
         print("Native Pupilio Version:", version.decode("gbk"))
         # set tracking eye
@@ -688,11 +706,22 @@ class Pupilio:
         return int(mode[0]), left_roi, right_roi
 
     def previewer_start(self, udp_host: str, udp_port: int,
-                        draw_preview_annotations: bool = True) -> None:
+                        draw_preview_annotations: bool = True,
+                        fps: int = 30) -> None:
         """
         Start streaming the camera preview over UDP.
 
-        ...
+        Pushes preview frames encoded as JPEG datagrams to the specified UDP address and
+        port at a controlled frame rate. The stream can be received and decoded with any
+        standard UDP receiver (e.g. OpenCV).
+
+        Args:
+            udp_host (str): Destination IPv4 address.
+            udp_port (int): Destination UDP port (1-65535).
+            draw_preview_annotations (bool): Whether to overlay eye-box, pupil, and glint markers.
+                Defaults to True.
+            fps (int): Target streaming frame rate (e.g. 30, 60, 100, 200, 400).
+                Defaults to 30. Use <= 0 for uncapped (synced with camera hardware rate).
 
         Raises:
             ValueError: If ``udp_host`` is not a valid IP address.
@@ -704,15 +733,69 @@ class Pupilio:
         except ValueError:
             raise ValueError(f"Invalid IP address: {udp_host}.")
 
-        ret_init = self._et_native_lib.pupil_io_previewer_init(
-            udp_host.encode('gbk'), udp_port, draw_preview_annotations
-        )
+        if hasattr(self._et_native_lib, "pupil_io_previewer_init_ex"):
+            ret_init = self._et_native_lib.pupil_io_previewer_init_ex(
+                udp_host.encode('gbk'), udp_port, draw_preview_annotations, fps
+            )
+        else:
+            ret_init = self._et_native_lib.pupil_io_previewer_init(
+                udp_host.encode('gbk'), udp_port, draw_preview_annotations
+            )
+
         if ret_init != ET_ReturnCode.ET_SUCCESS.value:
-            raise RuntimeError(f"pupil_io_previewer_init failed with code {ret_init}.")
+            err = self.get_last_error()
+            raise RuntimeError(f"pupil_io_previewer_init failed with code {ret_init}. Detail: {err}")
 
         ret_start = self._et_native_lib.pupil_io_previewer_start()
         if ret_start != ET_ReturnCode.ET_SUCCESS.value:
-            raise RuntimeError(f"pupil_io_previewer_start failed with code {ret_start}.")
+            err = self.get_last_error()
+            raise RuntimeError(f"pupil_io_previewer_start failed with code {ret_start}. Detail: {err}")
+
+    def previewer_set_fps(self, fps: int) -> None:
+        """
+        Dynamically update the target streaming frame rate of the UDP previewer.
+
+        Can be called while preview streaming is active without restarting the stream.
+
+        Args:
+            fps (int): Target frame rate (e.g. 30, 60, 100, 200, 400).
+                Use <= 0 for uncapped (synced with camera hardware frame arrival).
+
+        Raises:
+            RuntimeError: If setting FPS fails or previewer is not active.
+        """
+        if not hasattr(self._et_native_lib, "pupil_io_previewer_set_fps"):
+            logger.warning("pupil_io_previewer_set_fps is not supported by the loaded native library.")
+            return
+
+        ret = self._et_native_lib.pupil_io_previewer_set_fps(fps)
+        if ret != ET_ReturnCode.ET_SUCCESS.value:
+            err = self.get_last_error()
+            raise RuntimeError(f"pupil_io_previewer_set_fps failed with code {ret}. Detail: {err}")
+
+    def previewer_get_fps(self) -> int:
+        """
+        Get the currently configured target frame rate of the UDP previewer.
+
+        Returns:
+            int: Target frame rate in FPS, or -1 if previewer is not initialized.
+        """
+        if hasattr(self._et_native_lib, "pupil_io_previewer_get_fps"):
+            return self._et_native_lib.pupil_io_previewer_get_fps()
+        return -1
+
+    def get_last_error(self) -> str:
+        """
+        Retrieve the latest detailed error message reported by the native C++ library.
+
+        Returns:
+            str: Error description, or empty string if no error occurred.
+        """
+        if hasattr(self._et_native_lib, "pupil_io_get_last_error"):
+            err_ptr = self._et_native_lib.pupil_io_get_last_error()
+            if err_ptr:
+                return err_ptr.decode('utf-8', errors='replace')
+        return ""
 
     def previewer_stop(self):
         """
