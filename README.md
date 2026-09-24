@@ -25,22 +25,20 @@
 - **Intuitive Workflow**: Simplified calibration, validation, and recording with minimal setup.
 
 ### Specifications
+| Specifications | AIO (Commercial)      | PRO (Research) | DVS-2K\*\* (Premiere Research) |
+| :--- |:----------------------| :--- | :--- |
+| Sampling Rate | 200 Hz                | 400 Hz | 2000 Hz |
+| Tracking Accuracy | 0.5-1.0 deg           | 0.3-0.8 deg | 0.3-0.8 deg |
+| Spatial Resolution | 0.05 deg              | 0.08 deg | 0.02 deg |
+| System Latency | 25 ms                 | 12 ms | 5 ms |
+| Tracking Algorithm | Neural Network        | Neural Network | Neural Network |
+| Development Support | C++/Python/Matlab     | C++/Python/Matlab | C++/Python/Matlab |
+| Operating System | Windows 11            | Windows 11 | Windows 11 |
+| Head Box | 40x40cm @ 70cm        | 40x40cm @ 70cm | 40x40cm @ 70cm |
+| Psychology Experiment Software | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox |
+| Research Support | No                    | Yes | Yes |
 
-| Attribute                | Specification                                 |
-|--------------------------|-----------------------------------------------|
-| Sample Rate              | 200 Hz / 400 Hz                               |
-| Accuracy                 | 0.5-1°                                        |
-| Precision                | 0.03°                                         |
-| Blink/Occlusion Recovery | 5 ms @ 200 Hz                                 |
-| Head Box                 | 40 cm x 40 cm @ 70 cm                         |
-| Operation Range          | 50 - 90 cm                                    |
-| Gaze Signal Delay        | < 25 ms                                       |
-| Tracking Technology      | Neural Networks                               |
-| Network Streaming        | LabStreamingLayer (LSL) Gaze & Marker Streams |
-| Dimension                | 32 cm x 45 cm x 20 cm                         |
-| Weight                   | 5 kg [Eye-tracker + Display + Compute Module] |
-| Operating System         | Windows 11                                    |
-| SDK                      | C/C++/Python/Matlab                           |
+\*\* DVS-2K edition available in Q4 2026. Final specifications subject to product manual.
 
 ## Installation
 
