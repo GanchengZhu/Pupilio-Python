@@ -1,10 +1,8 @@
 <div align="left">
 
-# Pupil.IO Python SDK 
+# Pupil.IO Python Integration 
 
 </div>
-
-## What is "pupilio"?
 
 **pupilio** is a lightweight Python SDK for the Pupil.IO eye-trackers developed by Hangzhou Shenning Technology Co., Ltd. It offers a user-friendly interface that covers core eye-tracking functions like data recording, calibration,  validation, and real-time access to gaze data. **"pupilio"** seamlessly integrates with popular platforms such as PsychoPy and PyGame, it enables quick development of eye-tracking studies.
 
@@ -18,7 +16,6 @@
 
 [Pupil.IO](https://www.deep-gaze.com/) is a high-speed, high-precision eye-tracking system featuring an all-in-one (AIO) plug-and-play design that is ideal for both scientific research and clinical applications. With minimal setup (just power on and start tracking), it delivers lab-grade accuracy in a compact, user-friendly form factor.
 
-### Features
 - **Precision Tracking**: Capture high-frequency eye movement and pupil dynamics with lab-grade accuracy.
 - **Seamless Compatibility**: Native integration with PsychoPy, PyGame, and other Python experimental platforms.
 - **Multi-Modal Synchronization**: Native support for LabStreamingLayer (LSL) to synchronize gaze, pupil dynamics, and event markers with EEG, fNIRS, and EMG via LabRecorder.
