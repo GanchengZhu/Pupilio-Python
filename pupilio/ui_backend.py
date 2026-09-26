@@ -198,8 +198,10 @@ class PsychoPyUIBackend(UIBackend):
             win (psychopy.visual.Window): Window to draw on.
         """
         super().__init__(win)
-        from psychopy import visual, event
+        from psychopy import visual, event, hardware
         self.event = event
+        self.hardware = hardware
+
         self.mouse = self.event.Mouse()
         self.win_units = self.win.units
 
@@ -358,8 +360,35 @@ class PsychoPyUIBackend(UIBackend):
         return None
 
     def clear_events(self):
+        # 1. Clear the default (pygame/PTB) keyboard backend
         self.event.clearEvents()
         self.mouse.clickReset()
+
+        # 2. Also clear ioHub, because PsychoPy Builder-generated experiments
+        #    route keyboard input through an ioHub Keyboard device, and its
+        #    queue is independent of `psychopy.event`.
+        try:
+            dm = self.hardware.DeviceManager()  # singleton, same instance the script uses
+            io_server = getattr(dm, "ioServer", None)
+            if io_server is not None:
+                try:
+                    io_server.clearEvents()
+                except Exception:
+                    pass
+            default_kb = dm.getDevice("defaultKeyboard")
+            if default_kb is not None:
+                try:
+                    default_kb.clearEvents(eventType="keyboard")
+                except TypeError:
+                    # Some ioHub keyboard wrappers don't accept eventType
+                    default_kb.clearEvents()
+                except Exception:
+                    pass
+        except Exception:
+            # ioHub may not be running (e.g. Pygame backend, or plain PsychoPy without ioHub)
+            pass
+
+
 
     def set_mouse_visible(self, visible):
         try:
