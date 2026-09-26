@@ -6,7 +6,7 @@
 
 **pupilio** is a lightweight Python SDK for the Pupil.IO eye-trackers developed by Hangzhou Shenning Technology Co., Ltd. It offers a user-friendly interface that covers core eye-tracking functions like data recording, calibration,  validation, and real-time access to gaze data. **"pupilio"** seamlessly integrates with popular platforms such as PsychoPy and PyGame, it enables quick development of eye-tracking studies.
 
-## The Pupil.IO eye-tracker+
+## The Pupil.IO eye-tracker
 <div align="left">
   <a href="https://raw.githubusercontent.com/GanchengZhu/Pupilio/refs/heads/master/docs/_static/images/intro/about/pupilio_c.PNG">
     <img width="390" height="351" src="https://raw.githubusercontent.com/GanchengZhu/Pupilio/refs/heads/master/docs/_static/images/intro/about/pupilio_c.PNG">
