@@ -896,13 +896,14 @@ class Pupilio:
         """
         if self.get_sampling_status():
             logger.error("Sampling is already running.")
-            raise RuntimeError("Sampling is already running; call `stop_sampling` first.")
+            pass
+            # raise RuntimeError("Sampling is already running; call `stop_sampling` first.")
 
         res = self._et_native_lib.pupil_io_start_sampling()
         time.sleep(0.05)
         if res != ET_ReturnCode.ET_SUCCESS.value:
             logger.error(f"Failed to start sampling (code: {res}).")
-            raise RuntimeError("You have called `start_sampling` function or something went wrong.")
+            raise RuntimeError("You have called `start_sampling` function and something went wrong.")
 
         if self._lsl_manager:
             self._lsl_manager.start()
