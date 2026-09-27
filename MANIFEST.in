@@ -1,0 +1,4 @@
+include README.md
+include LICENSE
+recursive-include pupilio/lib *.dll
+recursive-include pupilio/asset *

@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pupilio"
+dynamic = ["version"]
+description = "Pupilio Library"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    { name = "Pupilio", email = "zhugc2016@gmail.com" },
+]
+license = "CC-BY-4.0"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "numpy",
+    "pygame",
+    "opencv-python",
+]
+
+[project.urls]
+Homepage = "https://github.com/GanchengZhu/Pupilio"
+Repository = "https://github.com/GanchengZhu/Pupilio"
+
+[project.optional-dependencies]
+psychopy = [
+    "psychopy",
+]
+dev = [
+    "pytest>=7.0",
+    "build",
+    "twine",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pupilio*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+"*" = ["*.dll", "*.png", "*.wav"]
+
+[tool.setuptools.dynamic]
+version = { attr = "pupilio.version.__version__" }
