@@ -1,5 +1,11 @@
 # Pupilio SDK Update Log
 
+
+## Version 1.5.1 (Build 1) - 2026-09-28
+- adding new cali_mode, allow use to skip calibration and go directly into recording.
+- rewrote calibration backend for cleaner code organization.
+- 400 hz support and backward compatibility with 200 hz hardware.
+
 ## Version 1.5.0 (Build 1) - 2026-09-08
 - Added native LabStreamingLayer (LSL) support for multi-modal real-time synchronization (EEG, fNIRS, EMG, etc.).
 - Introduced continuous Gaze stream with 12-channel Standard Mode (including dedicated trigger channel) and 39-channel Research Mode.
@@ -9,10 +15,9 @@
 - Added comprehensive documentation, examples, and GitHub Wiki integration guide.
 
 ## Version 1.4.0 (Build 1) - 2026-06-14
-- Support 400Hz eye-tracking sampling
+- Support 400Hz sampling
 
 ## Version 1.4.0 (Build 1) - 2026-01-18
-
 - Fix bugs.
 - Add a new function `estimate_gaze`.
 - Add fixation detection feature (I-DT).
