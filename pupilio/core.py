@@ -896,7 +896,7 @@ class Pupilio:
         """
         if self.get_sampling_status():
             logger.error("Sampling is already running.")
-            pass
+            return ET_ReturnCode.ET_SUCCESS.value
             # raise RuntimeError("Sampling is already running; call `stop_sampling` first.")
 
         res = self._et_native_lib.pupil_io_start_sampling()

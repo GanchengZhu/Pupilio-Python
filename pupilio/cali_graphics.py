@@ -506,7 +506,20 @@ class CalibrationUI:
 
             action = self.ui.check_action()
             if action == 'quit':
-                self._exit = True
+                if self._phase_adjust_position:
+                    # Skip head adjustment, proceed straight to calibration.
+                    self._phase_adjust_position = False
+                    if self._cali_mode > 0:
+                        self._calibration_preparing = True
+                    else:
+                        # cali_mode == 0 already means "no instruction screen, go direct"
+                        self._phase_calibration = True
+                        if hasattr(self.config, 'calibration_listener') and self.config.calibration_listener:
+                            self.config.calibration_listener.on_calibration_target_onset(self._calibration_point_index)
+                    self._clear_pending_input()
+                else:
+                    # ESC anywhere else still aborts the whole calibration
+                    self._exit = True
             elif action == 'continue':
                 if self._phase_adjust_position:
                     self._phase_adjust_position = False

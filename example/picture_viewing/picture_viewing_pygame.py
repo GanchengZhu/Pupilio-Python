@@ -90,7 +90,6 @@ pupil_io.create_session(session_name="deepgaze_demo")
 pupil_io.calibration_draw(validate=False, hands_free=False, screen=win)
 
 # ---- Start retrieving gaze data ----
-
 pupil_io.start_sampling()
 pygame.time.wait(100)  # sleep for 100 ms so the tracker cache some sample
 
