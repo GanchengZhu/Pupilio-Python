@@ -175,6 +175,8 @@ class CalibrationUI:
         self._hands_free_start_timestamp = 0
         self._validation_finished_timer = 0
         self._preparing_hands_free_start = 0
+        self._input_grace_until = 0.0
+        self._clear_frames_remaining = 0
 
     def play_sound(self, snd):
         """
@@ -489,7 +491,7 @@ class CalibrationUI:
             hands_free (bool): When True, phases advance on timers rather than waiting for
                 participant input.
         """
-        self._pupil_io._recalibration()
+
         self.initialize_variables()
         self._hands_free = hands_free
 
@@ -499,10 +501,20 @@ class CalibrationUI:
         self._need_validation = validate
 
         self._clear_pending_input()
+        self._input_grace_until = time.time() + 0.4  # 400 ms
+        self._clear_frames_remaining = 5  # 前 5 帧每帧再清一次
+
+
         self.ui.set_mouse_visible(getattr(self.config, 'simulation_mode', 0) == 1)
+
+        self._pupil_io._recalibration()
 
         while not self._exit:
             self.ui.before_draw(bg_color)
+
+            if self._clear_frames_remaining > 0:
+                self._clear_pending_input()
+                self._clear_frames_remaining -= 1
 
             action = self.ui.check_action()
             if action == 'quit':
