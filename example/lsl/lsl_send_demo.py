@@ -1,15 +1,33 @@
-# _*_ coding: utf-8 _*_
+# -*- coding: utf-8 -*-
 # Copyright (c) 2026, Hangzhou DeepGaze Science and Technology Co., Ltd
 # All Rights Reserved
 #
 # DESCRIPTION:
 # This demo shows how to enable LabStreamingLayer (LSL) in Pupilio.
-# It broadcasts continuous eye-tracking samples (12 channels) and discrete markers/triggers
-# to the local network for synchronized recording with EEG, fNIRS, etc. via LabRecorder.
+# It broadcasts continuous eye-tracking samples (12 channels) and discrete
+# markers/triggers to the local network for synchronized recording with EEG,
+# fNIRS, etc. via LabRecorder.
+#
+# Requires: pip install pylsl
+#
+# Author: Gancheng Zhu
+# Last updated: 6/21/2026 by Zhiguo Wang
 
 import os
+import sys
 import time
+
+try:
+    import pylsl  # noqa: F401
+except ImportError:
+    print("This demo requires pylsl. Install it with: pip install pylsl")
+    sys.exit(1)
+
 from pupilio import Pupilio, DefaultConfig
+
+# Must match config.lsl_stream_mode below
+CHANNELS_PER_MODE = {"standard": 12, "full": 39}
+
 
 def main():
     print("=== Pupilio LSL Sending Demo ===")
@@ -21,15 +39,17 @@ def main():
     config.lsl_gaze_stream_name = "Pupilio_Gaze"
     config.lsl_marker_stream_name = "Pupilio_Markers"
 
-    # Set to True if testing on a PC without physical eye-tracker hardware
-    # config.simulation_mode = True
+    # Set to 1 if testing on a PC without physical eye-tracker hardware
+    # config.simulation_mode = 1
 
     # 2. Instantiate Pupilio and create experiment session
     pupil_io = Pupilio(config=config)
     pupil_io.create_session("lsl_demo_session")
 
-    print(f"LSL Outlets created:")
-    print(f"  - Gaze Stream: '{config.lsl_gaze_stream_name}' (Mode: {config.lsl_stream_mode}, 12 channels)")
+    n_channels = CHANNELS_PER_MODE.get(config.lsl_stream_mode, "?")
+    print("LSL Outlets created:")
+    print(f"  - Gaze Stream: '{config.lsl_gaze_stream_name}' "
+          f"(Mode: {config.lsl_stream_mode}, {n_channels} channels)")
     print(f"  - Marker Stream: '{config.lsl_marker_stream_name}'")
 
     try:
@@ -37,9 +57,12 @@ def main():
         print("\nStarting sampling and LSL streaming...")
         pupil_io.start_sampling()
 
+        # Give consumers (LabRecorder) a moment to discover the outlets
+        time.sleep(0.5)
+
         # 4. Simulate a 5-second experimental trial with triggers and annotations
         print("\nStreaming active for 5 seconds...")
-        
+
         # Send an experiment start annotation
         pupil_io.send_lsl_marker("EXPERIMENT_START")
         time.sleep(1.0)
@@ -53,6 +76,9 @@ def main():
         print("Sending trigger 201 (Response)...")
         pupil_io.set_trigger(201)
         time.sleep(1.5)
+
+        # Return the trigger channel to idle before the next event window
+        pupil_io.set_trigger(0)
 
         # Send an experiment end annotation
         pupil_io.send_lsl_marker("EXPERIMENT_END")

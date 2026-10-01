@@ -1,4 +1,4 @@
-# _*_ coding: utf-8 _*_
+# -*- coding: utf-8 -*-
 
 # Copyright (c) 2026, Hangzhou DeepGaze Science and Technology Co., Ltd
 # All Rights Reserved
@@ -28,7 +28,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # DESCRIPTION:
-# This script shows the most basic commands needed for an eye-tracking task
+# This script shows the most basic commands needed for an eye-tracking task.
 # It demonstrates: initialization, calibration, data recording, and saving.
 
 # Author: Gancheng Zhu
@@ -50,7 +50,7 @@ scn_width, scn_height = (1920, 1080)
 win = pygame.display.set_mode((scn_width, scn_height), FULLSCREEN | HWSURFACE)
 
 # ---- Initialize the tracker and create a session ----
-# Initialize the tracker with custom configuration
+# Initialize the tracker with the default configuration
 pupil_io = Pupilio()
 
 # create a task session, and set a session name
@@ -76,14 +76,21 @@ win.fill((128, 128, 128))
 win.blit(txt, ((scn_width - _w) // 2, (scn_height - _h) // 2))
 pygame.display.flip()
 
-pygame.time.wait(5 * 1000)  # 5 seconds
+# Wait 5 seconds, keeping the window responsive and allowing the user to
+# abort early by pressing a key.
+t_start = pygame.time.get_ticks()
+while pygame.time.get_ticks() - t_start < 5 * 1000:
+    for ev in pygame.event.get():
+        if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+            t_start = -10_000  # exit the loop early
+    pygame.time.wait(10)
 
 # ---- Stop recording and save data ----
+# let the tracker flush trailing samples before stopping
+pygame.time.wait(100)
+
 # stop sampling
 pupil_io.stop_sampling()
-
-# sleep for 100 ms to capture ending samples
-pygame.time.wait(100)
 
 # save the sample data to file
 data_dir = "./data"
@@ -98,3 +105,4 @@ pupil_io.release()
 
 # quit pygame
 pygame.quit()
+

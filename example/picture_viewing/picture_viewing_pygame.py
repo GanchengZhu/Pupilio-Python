@@ -3,7 +3,7 @@
 # Copyright (c) 2026, Hangzhou DeepGaze Science and Technology Co., Ltd
 # All Rights Reserved
 #
-# For use by  Hangzhou Deep Gaze Science and Technology Co., Ltd customers
+# For use by Hangzhou Deep Gaze Science and Technology Co., Ltd customers
 # only. Redistribution and use in source and binary forms, with or without
 # modification, are NOT permitted.
 #
@@ -11,7 +11,7 @@
 # notice, this list of conditions and the following disclaimer in
 # the documentation and/or other materials provided with the distribution.
 #
-# Neither name of  Hangzhou Deep Gaze Sci & Tech Ltd nor the name of
+# Neither name of Hangzhou Deep Gaze Sci & Tech Ltd nor the name of
 # contributors may be used to endorse or promote products derived from
 # this software without specific prior written permission.
 #
@@ -28,11 +28,14 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # DESCRIPTION:
-# This is a demo showing how to use deep gaze pythonic library
-# In this script, we connect to the tracker, perform a calibration,
-# validate the calibration results, then we subscribe to the sample data
-# stream, with which we constantly update the position of a gaze cursor
-
+# Quick-start demo of the Pupilio Python SDK with Pygame.
+#
+# Connect to the tracker, calibrate, and run a free-viewing task with a
+# real-time gaze cursor overlaid on each image:
+#   - Left  eye: hollow blue  circle, labelled "L"
+#   - Right eye: hollow green circle, labelled "R"
+# Each cursor is drawn only when that eye reports a valid, finite sample.
+#
 # Author: Gancheng Zhu
 # Last updated: 6/20/2026 by Zhiguo Wang
 
@@ -40,146 +43,114 @@
 import os
 import math
 import pygame
-from pygame.locals import *
+from pygame.locals import FULLSCREEN, HWSURFACE, KEYDOWN, K_RETURN, K_ESCAPE
+
 from pupilio import Pupilio, DefaultConfig
-from pupilio.misc import ActiveEye, CalibrationMode
 
 # ---- Initialize Pygame and create a full-screen window ----
-# use the Pygame library for graphics, first init pygame and open a full screen window
 pygame.init()
 scn_width, scn_height = (1920, 1080)
 win = pygame.display.set_mode((scn_width, scn_height), FULLSCREEN | HWSURFACE)
 
-# font for drawing
+# Font used for the "L" and "R" labels drawn inside the gaze cursors
 font = pygame.font.SysFont("Arial", 48, bold=True)
 
 # ---- Configure the eye tracker ----
-# use a custom config file to control the tracker
 config = DefaultConfig()
+config.face_previewing = 1          # show face preview during calibration
+config.look_ahead = 2               # heuristic filter (4 flanking samples)
+config.sampling_rate = 200          # 200 Hz (falls back to 200 on 200 Hz models)
+config.cali_mode = 5                # 5-point calibration
+config.simulation_mode = 0          # 0 = hardware, 1 = simulation on any PC
 
-# If previewing the face image during calibration
-config.face_previewing = 1
-
-# Heuristic filter, recommended look_ahead = 2 (i.e., a noisy spike is determined by
-# 4 flanking samples)
-config.look_ahead = 2
-
-# Set the sampling rate (for models that support 400/800/1000 Hz),
-# on the 200 Hz model, sampling rate will fall back to 200 Hz
-config.sampling_rate = 200
-
-# Set the calibration mode (2-point, 4-point, 5-point)
-config.cali_mode = 5
-
-# alternatively, use the constants defined in .misc
-# config.cali_mode = CalibrationMode.FOUR_POINTS
-
-# Run the script in gaze simulation mode, i.e., any Windows computer; here we set it to 0
-config.simulation_mode = 0
-
-# ---- Instantiate tracker object and create a session ----
-# instantiate a tracker object
+# ---- Instantiate tracker and create a session ----
 pupil_io = Pupilio(config)
-
-# create a task session, and set a session name
-# The session name must contain only letters, digits or underscores without any special characters.
 pupil_io.create_session(session_name="deepgaze_demo")
 
-# ---- Calibrate and validate ----
-# set 'validate' to True if you would like to verify the calibration results
+# ---- Calibrate ----
 pupil_io.calibration_draw(validate=False, hands_free=False, screen=win)
 
 # ---- Start retrieving gaze data ----
 pupil_io.start_sampling()
-pygame.time.wait(100)  # sleep for 100 ms so the tracker cache some sample
-pupil_io.start_sampling()
+pygame.time.wait(100)  # let the tracker produce a few samples first
 
-# ---- Display images with real-time gaze cursor ----
-# A free viewing task, in which we show a picture and overlay the gaze cursor
-img_folder = 'images'
-images = ['gray_grid.jpg', 'west_lake.jpg', 'old_town.jpg']
+# ---- Free-viewing task with real-time gaze cursor ----
+img_folder = "images"
+images = ["gray_grid.jpg", "west_lake.jpg", "old_town.jpg"]
 
-# show the images one by one in a loop, press a ENTER key to exit the program
 for _img in images:
+    # load the image, converting to the display pixel format once so each
+    # per-frame blit below is a fast memory copy rather than a conversion
+    im = pygame.image.load(os.path.join(img_folder, _img)).convert()
+
     # show the image on screen
     win.fill((128, 128, 128))
-    im = pygame.image.load(os.path.join(img_folder, _img))
     win.blit(im, (0, 0))
     pygame.display.flip()
-    # send a trigger to record in the eye movement data to mark picture onset
+    # send a trigger to mark picture onset in the eye movement data
     pupil_io.set_trigger(202)
 
-    # now lets show the gaze cursor, press any key to close the window
+    # ---- Gaze cursor loop: press ENTER or ESC to advance ----
     got_key = False
-    max_duration = 100000
+    max_duration = 100_000          # 100 s safety cap per image (ms)
     t_start = pygame.time.get_ticks()
-    pygame.event.clear()  # clear all cached events if there were any
-    gx, gy = -65536, -65536
-    has_valid_gaze = False  # track whether we have received valid gaze data
+    pygame.event.clear()            # drop stale events from the previous image
+
+    # last known cursor positions; -65536 keeps them off-screen until the
+    # first valid sample for each eye arrives
+    lx, ly = -65536, -65536
+    rx, ry = -65536, -65536
 
     while not (got_key or (pygame.time.get_ticks() - t_start) >= max_duration):
-        # get the newest gaze position
-        left, right, bino = pupil_io.get_current_gaze()
+
+        # get_current_gaze() returns (left, right, bino). Each eye is a
+        # (status, x, y) tuple, where status == 1 means the sample is valid.
+        # The binocular tuple is unused by this demo.
+        left, right, _bino = pupil_io.get_current_gaze()
 
         # ---- unpack left eye ----
         l_status, lx_new, ly_new = left
-        has_left_valid = (
-                l_status == 1 and math.isfinite(lx_new) and math.isfinite(ly_new)
-        )
+        has_left_valid = (l_status == 1 and math.isfinite(lx_new) and math.isfinite(ly_new))
         if has_left_valid:
             lx, ly = int(lx_new), int(ly_new)
 
         # ---- unpack right eye ----
         r_status, rx_new, ry_new = right
-        has_right_valid = (
-                r_status == 1 and math.isfinite(rx_new) and math.isfinite(ry_new)
-        )
+        has_right_valid = (r_status == 1 and math.isfinite(rx_new) and math.isfinite(ry_new))
         if has_right_valid:
             rx, ry = int(rx_new), int(ry_new)
 
         # check key presses
         for ev in pygame.event.get():
-            if ev.type == KEYDOWN:
-                if ev.key == K_RETURN:
-                    got_key = True
+            if ev.type == KEYDOWN and ev.key in (K_RETURN, K_ESCAPE):
+                got_key = True
 
-        # update the visual (image and gaze cursors)
+        # redraw the image to erase the previous frame's cursors
         win.blit(im, (0, 0))
 
-        # left eye cursor (blue, empty circle)
+        # left eye cursor: hollow blue circle labelled "L"
         if has_left_valid:
             pygame.draw.circle(win, (0, 0, 255), (lx, ly), 55, 5)
             l_label = font.render("L", True, (0, 0, 255))
-            l_rect = l_label.get_rect(center=(lx, ly))
-            win.blit(l_label, l_rect)
+            win.blit(l_label, l_label.get_rect(center=(lx, ly)))
 
-        # right eye cursor (green, empty circle)
+        # right eye cursor: hollow green circle labelled "R"
         if has_right_valid:
             pygame.draw.circle(win, (0, 255, 0), (rx, ry), 55, 5)
             r_label = font.render("R", True, (0, 255, 0))
-            r_rect = r_label.get_rect(center=(rx, ry))
-            win.blit(r_label, r_rect)
-
-        pygame.display.flip()
+            win.blit(r_label, r_label.get_rect(center=(rx, ry)))
 
         pygame.display.flip()
 
 # ---- Stop sampling and save data ----
-# stop sampling
-pygame.time.wait(100)  # sleep for 100 ms to capture ending samples
+pygame.time.wait(100)  # capture trailing samples
 pupil_io.stop_sampling()
 
-# save the sample data to file
 data_dir = "./data"
 if not os.path.exists(data_dir):
     os.makedirs(data_dir)
-
-file_name = "deepgaze_demo.csv"
-pupil_io.save_data(os.path.join(data_dir, file_name))
+pupil_io.save_data(os.path.join(data_dir, "deepgaze_demo.csv"))
 
 # ---- Clean up ----
-# release the tracker instance
 pupil_io.release()
-
-# quit pygame
 pygame.quit()

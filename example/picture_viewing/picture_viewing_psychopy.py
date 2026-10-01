@@ -11,7 +11,7 @@
 # notice, this list of conditions and the following disclaimer in
 # the documentation and/or other materials provided with the distribution.
 #
-# Neither name of Hangzhou DeepGaze Sci & Tech Ltd nor the name of
+# Neither name of Hangzhou Deep Gaze Sci & Tech Ltd nor the name of
 # contributors may be used to endorse or promote products derived from
 # this software without specific prior written permission.
 #
@@ -28,11 +28,14 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # DESCRIPTION:
-# This is a demo showing how to use deep gaze pythonic library
-# In this script, we connect to the tracker, perform a calibration,
-# validate the calibration results, then we subscribe to the sample data
-# stream, with which we constantly update the position of a gaze cursor
-
+# Quick-start demo of the Pupilio Python SDK with PsychoPy.
+#
+# Connect to the tracker, calibrate, and run a free-viewing task with a
+# real-time gaze cursor overlaid on each image:
+#   - Left  eye: hollow blue  circle, labelled "L"
+#   - Right eye: hollow green circle, labelled "R"
+# Each cursor is drawn only when that eye reports a valid, finite sample.
+#
 # Author: Gancheng Zhu
 # Last updated: 6/20/2026 by Zhiguo Wang
 
@@ -41,133 +44,113 @@ import os
 import math
 from psychopy import visual, core, event
 from pupilio import Pupilio, DefaultConfig
-from pupilio.misc import ActiveEye, CalibrationMode
 
-# ---- Initialize Psychopy and create a full-screen window ----
-# use the Psychopy library for graphics, first open a full screen window
+# Cursor colors in PsychoPy's -1..1 RGB space (same as pygame's blue/green)
+CURSOR_BLUE = (-1, -1, 1)    # pygame equivalent: (0, 0, 255)
+CURSOR_GREEN = (-1, 1, -1)   # pygame equivalent: (0, 255, 0)
+
+# ---- Initialize PsychoPy and create a full-screen window ----
 scn_width, scn_height = (1920, 1080)
-win = visual.Window((scn_width, scn_height), fullscr=True, units='pix')
+win = visual.Window((scn_width, scn_height), fullscr=True, units='pix', color='black')
 
 # ---- Configure the eye tracker ----
-# use a custom config file to control the tracker
 config = DefaultConfig()
+config.face_previewing = 1          # show face preview during calibration
+config.look_ahead = 2               # heuristic filter (4 flanking samples)
+config.sampling_rate = 200          # 200 Hz (falls back to 200 on 200 Hz models)
+config.cali_mode = 5                # 5-point calibration
+config.simulation_mode = 0          # 0 = hardware, 1 = simulation on any PC
 
-# If previewing the face image during calibration
-config.face_previewing = 1
-
-# Heuristic filter, recommended look_ahead = 2 (i.e., a noisy spike is determined by
-# 4 flanking samples)
-config.look_ahead = 4
-
-# Set the sampling rate (for models that support 400/800/1000 Hz),
-# on the 200 Hz model, sampling rate will fall back to 200 Hz
-config.sampling_rate = 200
-
-# Set the calibration mode (2-point, 4-point, 5-point)
-config.cali_mode = 4
-# alternatively, use the constants defined in .misc
-# config.cali_mode = CalibrationMode.FOUR_POINTS
-
-# Run the script in gaze simulation mode, i.e., any Windows computer; here we set it to 0
-config.simulation_mode = 0
-
-# ---- Instantiate tracker object and create a session ----
-# instantiate a tracker object
+# ---- Instantiate tracker and create a session ----
 pupil_io = Pupilio(config)
-
-# create a task session, and set a session name
-# The session name must contain only letters, digits or underscores without any special characters.
 pupil_io.create_session(session_name="deepgaze_demo")
 
-# ---- Calibrate and validate ----
-# set 'validate' to True if you would like to verify the calibration results
-pupil_io.calibration_draw(validate=True, hands_free=False, screen=win)
+# ---- Calibrate ----
+pupil_io.calibration_draw(validate=False, hands_free=False, screen=win)
 
 # ---- Start retrieving gaze data ----
-# start retrieving gaze
 pupil_io.start_sampling()
-core.wait(0.1)  # sleep for 100 ms so the tracker cache some sample
+core.wait(0.1)  # let the tracker produce a few samples first
 
-# ---- Display images with real-time gaze cursor ----
-# A free viewing task, in which we show a picture and overlay the gaze cursor
+# ---- Gaze cursor stimuli (created once, repositioned each frame) ----
+left_cursor = visual.Circle(win, radius=55, lineColor=CURSOR_BLUE, lineWidth=5, fillColor=None)
+right_cursor = visual.Circle(win, radius=55, lineColor=CURSOR_GREEN, lineWidth=5, fillColor=None)
+left_label = visual.TextStim(win, text="L", color=CURSOR_BLUE, bold=True, height=48)
+right_label = visual.TextStim(win, text="R", color=CURSOR_GREEN, bold=True, height=48)
+
+# ---- Free-viewing task with real-time gaze cursor ----
 img_folder = 'images'
 images = ['gray_grid.jpg', 'west_lake.jpg', 'old_town.jpg']
 
-# show the images one by one in a loop, press a ENTER key to exit the program
 for _img in images:
     # show the image on screen
-    im = visual.ImageStim(win, os.path.join(img_folder, _img))
+    im = visual.ImageStim(win, image=os.path.join(img_folder, _img))
     im.draw()
     win.flip()
-    # send a trigger to record in the eye movement data to mark picture onset
+    # send a trigger to mark picture onset in the eye movement data
     pupil_io.set_trigger(202)
 
-    # now lets show the gaze cursor, press any key to close the window
+    # ---- Gaze cursor loop: press any key to advance ----
     got_key = False
-    max_duration = 10  # seconds
+    max_duration = 10.0  # seconds
     t_start = core.getTime()
-    event.clearEvents()  # clear all cached events if there were any
-    gx, gy = -65536, -65536
-    has_valid_gaze = False  # track whether we have received valid gaze data
+    event.clearEvents()
+
+    # last known cursor positions; -65536 keeps them off-screen until the
+    # first valid sample for each eye arrives
+    lx, ly = -65536, -65536
+    rx, ry = -65536, -65536
 
     while not (got_key or (core.getTime() - t_start) >= max_duration):
-        # get the newest gaze position
-        left, right, bino = pupil_io.get_current_gaze()
-        if pupil_io.config.active_eye == ActiveEye.BINO_EYE:
-            status, gx_new, gy_new = bino
-        elif pupil_io.config.active_eye == ActiveEye.LEFT_EYE:
-            status, gx_new, gy_new = left
-        elif pupil_io.config.active_eye == ActiveEye.RIGHT_EYE:
-            status, gx_new, gy_new = right
-        else:
-            # fallback to binocular if active eye is not set
-            status, gx_new, gy_new = bino
+        # get the newest gaze position for each eye
+        left, right, _bino = pupil_io.get_current_gaze()
 
-        # update the gaze position when got valid gaze position (not inf, not nan)
-        # only update if we have a valid sample (status=1) and the values are finite
-        if (status == 1 and
-                math.isfinite(gx_new) and math.isfinite(gy_new) and
-                0 <= gx_new <= scn_width and 0 <= gy_new <= scn_height):
-            gx = int(gx_new)
-            gy = int(gy_new)
-            has_valid_gaze = True
+        # ---- unpack left eye ----
+        l_status, lx_new, ly_new = left
+        has_left_valid = (l_status == 1 and math.isfinite(lx_new) and math.isfinite(ly_new))
+        if has_left_valid:
+            lx, ly = int(lx_new), int(ly_new)
+
+        # ---- unpack right eye ----
+        r_status, rx_new, ry_new = right
+        has_right_valid = (r_status == 1 and math.isfinite(rx_new) and math.isfinite(ry_new))
+        if has_right_valid:
+            rx, ry = int(rx_new), int(ry_new)
 
         # check keyboard events
         if event.getKeys():
             got_key = True
 
-        # redraw the screen
-        win.color = (0, 0, 0)
+        # redraw the image to erase the previous frame's cursors
         im.draw()
 
-        # only draw the cursor if we have valid gaze data
-        if has_valid_gaze:
-            # convert to psychopy coordinates, screen center = (0,0)
-            gx_psycho = gx - 960
-            gy_psycho = 540 - gy
-            gaze_cursor = visual.Circle(win, 50, pos=(gx_psycho, gy_psycho),
-                                        lineColor=(-1, 1, -1), lineWidth=5,
-                                        fillColor=None)
-            gaze_cursor.draw()
+        # convert screen pixels to PsychoPy coordinates (center = 0,0; +Y up)
+        if has_left_valid:
+            left_pos = (lx - scn_width / 2, scn_height / 2 - ly)
+            left_cursor.pos = left_pos
+            left_cursor.draw()
+            left_label.pos = left_pos
+            left_label.draw()
+
+        if has_right_valid:
+            right_pos = (rx - scn_width / 2, scn_height / 2 - ry)
+            right_cursor.pos = right_pos
+            right_cursor.draw()
+            right_label.pos = right_pos
+            right_label.draw()
 
         win.flip()
 
 # ---- Stop sampling and save data ----
-# stop sampling
-core.wait(0.1)  # sleep for 100 ms to capture ending samples
+core.wait(0.1)  # capture trailing samples
 pupil_io.stop_sampling()
 
-# save the sample data to file
 data_dir = "./data"
 if not os.path.exists(data_dir):
     os.makedirs(data_dir)
-
-file_name = "deepgaze_demo_400hz.csv"
-pupil_io.save_data(os.path.join(data_dir, file_name))
+pupil_io.save_data(os.path.join(data_dir, "deepgaze_demo.csv"))
 
 # ---- Clean up ----
-# release the tracker instance
 pupil_io.release()
-
-# quit psychopy
+win.close()
 core.quit()

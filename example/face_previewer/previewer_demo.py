@@ -28,9 +28,14 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # DESCRIPTION:
-# This demo shows how to read camera preview images while recording gaze data.
-# Please do not use this function to capture high-frame-rate videos while
-# recording gaze data.
+# This demo shows how to grab camera preview images while recording gaze
+# data. A background thread pulls the left and right camera preview frames
+# at roughly 60 Hz and saves them as JPEG files.
+#
+# Warning: this demo is for previewing only -- it is not intended for
+# capturing high-frame-rate video alongside gaze recording. Writing frames
+# to disk competes with the tracking thread for CPU and I/O, so keep the
+# preview rate low and the recording session short.
 
 # Author: Gancheng Zhu
 # Email: zhugc2016@gmail.com
@@ -42,13 +47,17 @@ import time
 
 import cv2
 
-import pupilio
 from pupilio import Pupilio
+
+# Directory for both the preview JPEGs and the recorded CSV.
+DATA_DIR = "./data"
 
 
 class PreviewThread(threading.Thread):
-    def __init__(self, pupil_io: Pupilio):
-        threading.Thread.__init__(self)
+    """Background thread that pulls camera preview frames and saves them."""
+
+    def __init__(self, pupil_io: Pupilio, save_dir=DATA_DIR):
+        super().__init__()
         self._pupil_io = pupil_io
         self._is_running = True
         self.daemon = True
@@ -56,44 +65,75 @@ class PreviewThread(threading.Thread):
         # JPEG compression parameters for the saved preview frames.
         self.preview_compression = [cv2.IMWRITE_JPEG_QUALITY, 40]  # ratio: 0~100
         self.preview_format = ".jpg"
-        self.save_dir = "./data"
+        self.save_dir = save_dir
         os.makedirs(self.save_dir, exist_ok=True)
 
     def stop(self):
+        """Signal the thread to exit and wait briefly for it to finish."""
         self._is_running = False
-        self.join()
-        self._pupil_io = None
+        self.join(timeout=2.0)
 
     def run(self):
         count = 0
         while self._is_running:
-            # ~60 Hz; keep this low to avoid overloading the tracking thread.
+            # ~60 Hz target; keep this low so the preview thread does not
+            # starve the tracking thread.
             time.sleep(0.016)
+
             preview_images = self._pupil_io.get_preview_images()
-            cv2.imwrite(
-                os.path.join(self.save_dir,
-                             f"left_camera_previewer_count_{count}{self.preview_format}"),
-                preview_images[0],
-                self.preview_compression)
-            cv2.imwrite(
-                os.path.join(self.save_dir,
-                             f"right_camera_previewer_count_{count}{self.preview_format}"),
-                preview_images[1],
-                self.preview_compression)
+            if not preview_images or len(preview_images) < 2:
+                continue
+
+            left, right = preview_images[0], preview_images[1]
+
+            if left is not None:
+                cv2.imwrite(
+                    os.path.join(
+                        self.save_dir,
+                        f"left_camera_previewer_count_{count}{self.preview_format}",
+                    ),
+                    left,
+                    self.preview_compression,
+                )
+
+            if right is not None:
+                cv2.imwrite(
+                    os.path.join(
+                        self.save_dir,
+                        f"right_camera_previewer_count_{count}{self.preview_format}",
+                    ),
+                    right,
+                    self.preview_compression,
+                )
+
             count += 1
-        print("Thread shutdown")
+
+        print("[INFO] Preview thread shutdown.")
 
 
 if __name__ == '__main__':
-    pi = pupilio.Pupilio()
+    # ---- Initialize the tracker ----
+    pi = Pupilio()
+
+    # ---- Start the preview thread ----
     preview_thread = PreviewThread(pupil_io=pi)
     preview_thread.start()
 
-    pi.create_session("cali")
+    # ---- Record a short session ----
+    # Note: no calibration is performed here, since this demo only reads
+    # camera preview images and never uses gaze coordinates. If you want
+    # to also record usable gaze data, call pi.calibration_draw(...) with
+    # a presentation window before start_sampling().
+    pi.create_session("preview_demo")
     pi.start_sampling()
     time.sleep(2)
     pi.stop_sampling()
 
+    # ---- Stop the preview thread and save data ----
     preview_thread.stop()
-    pi.save_data("demo.csv")
+
+    os.makedirs(DATA_DIR, exist_ok=True)
+    pi.save_data(os.path.join(DATA_DIR, "preview_demo.csv"))
     pi.release()
+    print("[INFO] Demo finished.")
+

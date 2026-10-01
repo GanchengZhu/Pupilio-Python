@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# _*_ coding: utf-8 _*_
+# -*- coding: utf-8 -*-
 
 # Copyright (c) 2026, Hangzhou DeepGaze Science and Technology Co., Ltd
 # All Rights Reserved
@@ -20,13 +20,20 @@ Features:
 6. Event distribution statistics & Main Sequence analysis.
 7. Self-contained standalone HTML report (base64 embedded images) with auto-open in browser,
    plus optional interactive Matplotlib desktop GUI.
+
+Requires: pandas, numpy, pillow, plotly, matplotlib
+Optional: pupilio (native EventDetection), tkinter (GUI)
 """
 
 import os
 import sys
 import argparse
 import base64
+import html
 import webbrowser
+from datetime import datetime
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -59,10 +66,15 @@ except ImportError:
 
 try:
     import matplotlib.pyplot as plt
-    import matplotlib.patches as patches
+    import matplotlib.patches as patches  # noqa: F401  (kept for downstream use)
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False
+
+
+def _open_in_browser(path: str) -> None:
+    """Open a local file in the default browser using a proper file:// URI."""
+    webbrowser.open(Path(path).resolve().as_uri())
 
 
 def image_to_base64_uri(image_path: str) -> str:
@@ -198,6 +210,28 @@ def fallback_idt_detection(df_valid: pd.DataFrame, which_eye: str = "bino",
                         'peakv': np.nan,
                         'blink': 1
                     })
+
+        # Flush a blink that was still open when the recording ended.
+        if in_blk:
+            blk_end = n
+            dur_ms = (ts[min(n - 1, blk_end - 1)] - ts[blk_start]) / 1e6 if blk_end > blk_start else 0
+            if dur_ms >= 30:
+                blinks.append({
+                    'onset': int(ts[blk_start] / 1e6),
+                    'offset': int(ts[min(n - 1, blk_end - 1)] / 1e6),
+                    'duration': max(1, int(dur_ms)),
+                    'start_x': xs[max(0, blk_start - 1)],
+                    'start_y': ys[max(0, blk_start - 1)],
+                    'end_x': xs[min(n - 1, blk_end - 1)],
+                    'end_y': ys[min(n - 1, blk_end - 1)],
+                    'sac_amp': 0.0,
+                    'eye': which_eye,
+                    'onset_i': blk_start,
+                    'offset_i': min(n - 1, blk_end - 1),
+                    'peakv': np.nan,
+                    'blink': 1
+                })
+
         if blinks:
             df_blk = pd.DataFrame(blinks)
 
@@ -252,18 +286,31 @@ class GazeDataAnalyzer:
         if is_dup.any():
             dup_trigger_indices = self.df_raw[is_dup & (self.df_raw['trigger'] > 0)].index
             for idx in dup_trigger_indices:
-                if idx > 0:
-                    self.df_raw.loc[idx - 1, 'trigger'] = self.df_raw.loc[idx, 'trigger']
+                # Walk backward past any other duplicate rows to land on a genuine frame.
+                back = idx - 1
+                while back > 0 and is_dup.loc[back]:
+                    back -= 1
+                if back >= 0:
+                    self.df_raw.loc[back, 'trigger'] = self.df_raw.loc[idx, 'trigger']
 
             if 'message' in self.df_raw.columns:
                 dup_msg_indices = self.df_raw[is_dup & self.df_raw['message'].notna()].index
                 for idx in dup_msg_indices:
-                    if idx > 0:
-                        self.df_raw.loc[idx - 1, 'message'] = self.df_raw.loc[idx, 'message']
+                    back = idx - 1
+                    while back > 0 and is_dup.loc[back]:
+                        back -= 1
+                    if back >= 0:
+                        self.df_raw.loc[back, 'message'] = self.df_raw.loc[idx, 'message']
 
             self.df_genuine = self.df_raw[~is_dup].copy().reset_index(drop=True)
         else:
             self.df_genuine = self.df_raw.copy().reset_index(drop=True)
+
+        if len(self.df_genuine) == 0:
+            raise ValueError(
+                f"No genuine gaze frames found in {self.data_path}. "
+                f"The file may be empty or contain only injected/duplicate rows."
+            )
 
         # Baseline timestamp in seconds
         t0 = self.df_genuine['timestamp'].iloc[0]
@@ -297,32 +344,39 @@ class GazeDataAnalyzer:
         temp_clean_path = os.path.join(self.output_dir, "_temp_clean_for_ed.csv")
         self.df_clean.to_csv(temp_clean_path, index=False)
 
-        used_native = False
-        if EventDetection is not None:
-            try:
-                ed = EventDetection()
-                ed.detect(temp_clean_path, self.output_dir, which_eye=self.which_eye,
-                          minimum_duration=self.min_duration, dispersion_threshold=self.dispersion)
-                base_name = os.path.splitext(os.path.basename(temp_clean_path))[0]
-                fix_file = os.path.join(self.output_dir, f"FIX_{base_name}.csv")
-                sac_file = os.path.join(self.output_dir, f"SAC_{base_name}.csv")
-                blk_file = os.path.join(self.output_dir, f"BLK_{base_name}.csv")
+        try:
+            used_native = False
+            if EventDetection is not None:
+                try:
+                    ed = EventDetection()
+                    ed.detect(temp_clean_path, self.output_dir, which_eye=self.which_eye,
+                              minimum_duration=self.min_duration, dispersion_threshold=self.dispersion)
+                    base_name = os.path.splitext(os.path.basename(temp_clean_path))[0]
+                    fix_file = os.path.join(self.output_dir, f"FIX_{base_name}.csv")
+                    sac_file = os.path.join(self.output_dir, f"SAC_{base_name}.csv")
+                    blk_file = os.path.join(self.output_dir, f"BLK_{base_name}.csv")
 
-                if os.path.exists(fix_file):
-                    self.df_fix = pd.read_csv(fix_file)
-                if os.path.exists(sac_file):
-                    self.df_sac = pd.read_csv(sac_file)
-                if os.path.exists(blk_file):
-                    self.df_blk = pd.read_csv(blk_file)
-                used_native = True
-            except Exception as e:
-                print(f"      [Notice] Native EventDetection exception ({e}), using fallback I-DT.")
+                    if os.path.exists(fix_file):
+                        self.df_fix = pd.read_csv(fix_file)
+                    if os.path.exists(sac_file):
+                        self.df_sac = pd.read_csv(sac_file)
+                    if os.path.exists(blk_file):
+                        self.df_blk = pd.read_csv(blk_file)
+                    used_native = True
+                except Exception as e:
+                    print(f"      [Notice] Native EventDetection exception ({e}), using fallback I-DT.")
 
-        if not used_native or len(self.df_fix) == 0:
-            self.df_fix, self.df_sac, self.df_blk = fallback_idt_detection(
-                self.df_clean, which_eye=self.which_eye,
-                min_duration_ms=self.min_duration, dispersion_threshold_deg=self.dispersion
-            )
+            if not used_native or len(self.df_fix) == 0:
+                self.df_fix, self.df_sac, self.df_blk = fallback_idt_detection(
+                    self.df_clean, which_eye=self.which_eye,
+                    min_duration_ms=self.min_duration, dispersion_threshold_deg=self.dispersion
+                )
+        finally:
+            if os.path.exists(temp_clean_path):
+                try:
+                    os.remove(temp_clean_path)
+                except OSError:
+                    pass
 
         # Map onset_i and offset_i to absolute time in seconds using df_genuine timeline
         t0 = self.df_genuine['timestamp'].iloc[0]
@@ -355,13 +409,6 @@ class GazeDataAnalyzer:
             self.df_blk['offset_s'] = self.df_blk['offset_i'].apply(
                 lambda idx: self.df_genuine.iloc[max(0, min(int(idx), n_pts - 1))]['time_s']
             )
-
-        # Cleanup temporary clean file
-        if os.path.exists(temp_clean_path):
-            try:
-                os.remove(temp_clean_path)
-            except OSError:
-                pass
 
         print(f"      Detected: {len(self.df_fix)} Fixations, {len(self.df_sac)} Saccades, {len(self.df_blk)} Blinks")
 
@@ -473,13 +520,13 @@ def build_plotly_dashboard(analyzer: GazeDataAnalyzer, html_out_path: str):
         else:
             trial_images_b64[tr['trial_id']] = ""
 
-    # Gaze and Pupil column names
+    # Gaze and Pupil column names (check df_genuine -- the DataFrame we actually plot from)
     eye = analyzer.which_eye
-    gx_col = f"{eye}_eye_gaze_position_x" if f"{eye}_eye_gaze_position_x" in analyzer.df_raw else 'bino_eye_gaze_position_x'
-    gy_col = f"{eye}_eye_gaze_position_y" if f"{eye}_eye_gaze_position_y" in analyzer.df_raw else 'bino_eye_gaze_position_y'
+    gx_col = f"{eye}_eye_gaze_position_x" if f"{eye}_eye_gaze_position_x" in analyzer.df_genuine else 'bino_eye_gaze_position_x'
+    gy_col = f"{eye}_eye_gaze_position_y" if f"{eye}_eye_gaze_position_y" in analyzer.df_genuine else 'bino_eye_gaze_position_y'
     pupil_l = 'left_eye_pupil_diameter_mm'
     pupil_r = 'right_eye_pupil_diameter_mm'
-    valid_col = f"{eye}_eye_valid" if f"{eye}_eye_valid" in analyzer.df_raw else 'bino_eye_valid'
+    valid_col = f"{eye}_eye_valid" if f"{eye}_eye_valid" in analyzer.df_genuine else 'bino_eye_valid'
 
     # Filtered valid gaze for continuous plotting (with NaNs to break lines during blinks)
     df_plot = analyzer.df_genuine.copy()
@@ -555,7 +602,7 @@ def build_plotly_dashboard(analyzer: GazeDataAnalyzer, html_out_path: str):
             f"Pos: ({row['avg_x']:.1f}, {row['avg_y']:.1f})"
             for i, row in analyzer.df_fix.iterrows()
         ]
-        # Size mapping: duration ms to radius 8-36
+        # Size mapping: duration ms to radius 8-40
         sizes = np.clip(np.sqrt(analyzer.df_fix['duration']) * 1.4, 8, 40)
         colors = np.arange(len(analyzer.df_fix))
 
@@ -763,7 +810,7 @@ def build_plotly_dashboard(analyzer: GazeDataAnalyzer, html_out_path: str):
             xref="x", yref="y domain",
             x=tr['start_time'] + 0.12, y=0.98,
             xanchor="left", yanchor="top",
-            text=f"🖼️ <b>Trial {tr['trial_id']}: {tr['image_name']}</b> ({dur_s:.1f}s)",
+            text=f"🖼️ <b>Trial {tr['trial_id']}: {html.escape(tr['image_name'])}</b> ({dur_s:.1f}s)",
             showarrow=False,
             font=dict(size=11, color="#1d3557"),
             bgcolor="rgba(255, 255, 255, 0.88)",
@@ -865,6 +912,10 @@ def build_plotly_dashboard(analyzer: GazeDataAnalyzer, html_out_path: str):
     div_spatial = fig_spatial.to_html(full_html=False, include_plotlyjs='cdn')
     div_temporal = fig_temporal.to_html(full_html=False, include_plotlyjs=False)
     div_stats = fig_stats.to_html(full_html=False, include_plotlyjs=False)
+
+    # Escape dynamic content going into the HTML report
+    safe_data_name = html.escape(os.path.basename(analyzer.data_path))
+    safe_eye = html.escape(analyzer.which_eye.upper())
 
     # Assemble HTML Report
     html_template = f"""<!DOCTYPE html>
@@ -983,7 +1034,7 @@ def build_plotly_dashboard(analyzer: GazeDataAnalyzer, html_out_path: str):
 <div class="container">
     <div class="header">
         <h1>Pupilio 眼动数据与事件检测交互式分析报告</h1>
-        <p>数据源: <code>{os.path.basename(analyzer.data_path)}</code> | 算法: Pupilio I-DT (分散阈值法) | 采样率: 标称 {analyzer.nominal_rate} Hz (实际有效眼动帧率: ~{analyzer.effective_rate} Hz, 帧间隔 {analyzer.sample_interval_ms:.2f} ms) | 分析眼: {analyzer.which_eye.upper()}</p>
+        <p>数据源: <code>{safe_data_name}</code> | 算法: Pupilio I-DT (分散阈值法) | 采样率: 标称 {analyzer.nominal_rate} Hz (实际有效眼动帧率: ~{analyzer.effective_rate} Hz, 帧间隔 {analyzer.sample_interval_ms:.2f} ms) | 分析眼: {safe_eye}</p>
     </div>
 
     <div class="kpi-grid">
@@ -1114,9 +1165,9 @@ def run_matplotlib_interactive_gui(analyzer: GazeDataAnalyzer):
 
     print("Launching Matplotlib interactive inspection...")
     eye = analyzer.which_eye
-    gx_col = f"{eye}_eye_gaze_position_x" if f"{eye}_eye_gaze_position_x" in analyzer.df_raw else 'bino_eye_gaze_position_x'
-    gy_col = f"{eye}_eye_gaze_position_y" if f"{eye}_eye_gaze_position_y" in analyzer.df_raw else 'bino_eye_gaze_position_y'
-    valid_col = f"{eye}_eye_valid" if f"{eye}_eye_valid" in analyzer.df_raw else 'bino_eye_valid'
+    gx_col = f"{eye}_eye_gaze_position_x" if f"{eye}_eye_gaze_position_x" in analyzer.df_genuine else 'bino_eye_gaze_position_x'
+    gy_col = f"{eye}_eye_gaze_position_y" if f"{eye}_eye_gaze_position_y" in analyzer.df_genuine else 'bino_eye_gaze_position_y'
+    valid_col = f"{eye}_eye_valid" if f"{eye}_eye_valid" in analyzer.df_genuine else 'bino_eye_valid'
 
     df_plot = analyzer.df_genuine.copy()
     df_plot.loc[df_plot[valid_col] != 1, [gx_col, gy_col]] = np.nan
@@ -1422,7 +1473,7 @@ class GazeAnalysisGUI:
 
     def _open_last_html(self):
         if os.path.exists(self.last_html_path):
-            webbrowser.open(f"file://{os.path.abspath(self.last_html_path)}")
+            _open_in_browser(self.last_html_path)
         else:
             messagebox.showinfo("提示", "尚未生成报告，请先点击【开始分析】。")
 
@@ -1442,7 +1493,6 @@ class GazeAnalysisGUI:
         self.btn_run.config(state=tk.DISABLED)
         self.progress_bar.start(10)
         self.txt_log.delete("1.0", tk.END)
-        from datetime import datetime
         self._log(f"[{datetime.now().strftime('%H:%M:%S')}] 开始执行眼动分析...")
 
         import threading
@@ -1484,7 +1534,7 @@ class GazeAnalysisGUI:
                 self._log_safe(f"仪表盘已保存: {html_path}")
                 if auto_open:
                     self._log_safe(f"正在默认浏览器中打开仪表盘...")
-                    webbrowser.open(f"file://{os.path.abspath(html_path)}")
+                    _open_in_browser(html_path)
 
             self.root.after(0, lambda: self._update_kpi(metrics))
 
@@ -1522,6 +1572,10 @@ class GazeAnalysisGUI:
 
 def launch_gui(default_data="", default_images="", default_output=""):
     """Launch the Python native Tkinter GUI."""
+    if not HAS_TKINTER:
+        print("[Error] tkinter is not available in this Python installation.")
+        print("        Run with --cli to use the command-line interface instead.")
+        sys.exit(1)
     root = tk.Tk()
     app = GazeAnalysisGUI(root, default_data, default_images, default_output)
     root.mainloop()
@@ -1546,8 +1600,12 @@ def main():
 
     # If launched with no args or --gui, launch the Tkinter GUI!
     if len(sys.argv) == 1 or "--gui" in sys.argv:
-        launch_gui(default_data, default_images, default_output)
-        return
+        if not HAS_TKINTER:
+            print("[WARN] tkinter not available; falling back to CLI mode.")
+            print("       Run with --cli (or provide --data) to suppress this message.")
+        else:
+            launch_gui(default_data, default_images, default_output)
+            return
 
     args = parser.parse_args()
 
@@ -1569,7 +1627,7 @@ def main():
         build_plotly_dashboard(analyzer, html_path)
         if not args.no_browser:
             print(f"Opening report in default browser: {html_path}")
-            webbrowser.open(f"file://{os.path.abspath(html_path)}")
+            _open_in_browser(html_path)
 
     if args.mode in ["matplotlib", "both"]:
         run_matplotlib_interactive_gui(analyzer)

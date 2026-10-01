@@ -11,7 +11,7 @@
 # notice, this list of conditions and the following disclaimer in
 # the documentation and/or other materials provided with the distribution.
 #
-# Neither name of Hangzhou DeepGaze Sci & Tech Ltd nor the name of
+# Neither name of Hangzhou Deep Gaze Sci & Tech Ltd nor the name of
 # contributors may be used to endorse or promote products derived from
 # this software without specific prior written permission.
 #
@@ -28,21 +28,22 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # DESCRIPTION:
-# Batch eye movement event detection script.
-# Processes all CSV files in the 'data' directory and detects:
-# - Fixations (FIX_)
-# - Saccades (SAC_)
-# - Blinks (BLK_)
-# Results are saved to the 'output' directory.
-
+# Batch eye-movement event detection script.
+# Processes every CSV file in the 'data' directory and detects:
+#   - Fixations (FIX_)
+#   - Saccades  (SAC_)
+#   - Blinks    (BLK_)
+# Results are written to the 'output' directory.
+#
 # Author: Gancheng Zhu
 # Email: zhugc2016@gmail.com
 
 import glob
 import os
+
 from pupilio import EventDetection
 
-#- Configuration
+# ---- Configuration ----
 # Directory containing the recorded eye-tracking CSV files.
 data_dir = 'data'
 
@@ -53,20 +54,47 @@ out_dir = 'output'
 # Common values: 'left', 'right', 'both'.
 which_eye = 'right'
 
-# Initialize the event detector
-ed = EventDetection()
 
-# Process all CSV files in the data directory.
-os.makedirs(out_dir, exist_ok=True)
+def main():
+    if not os.path.isdir(data_dir):
+        print(f"Data directory not found: '{data_dir}'")
+        return
 
-csv_files = glob.glob(os.path.join(data_dir, '*.csv'))
+    # Create the output directory (no-op if it already exists)
+    os.makedirs(out_dir, exist_ok=True)
 
-for file_path in csv_files:
-    print(f"Processing: {file_path}")
-    ed.detect(file_path, output_dir=out_dir, which_eye=which_eye)
-    print(f"Completed: {file_path}")
+    csv_files = sorted(glob.glob(os.path.join(data_dir, '*.csv')))
+    if not csv_files:
+        print(f"No CSV files found in '{data_dir}'.")
+        return
 
-if csv_files:
-    print(f"\nAll {len(csv_files)} file(s) processed successfully!")
-else:
-    print(f"\nNo CSV files found in '{data_dir}'.")
+    # Initialize the event detector once and reuse it across files.
+    ed = EventDetection()
+
+    succeeded = 0
+    failed = []
+
+    for file_path in csv_files:
+        print(f"Processing: {file_path}")
+        try:
+            ed.detect(file_path, output_dir=out_dir, which_eye=which_eye)
+            succeeded += 1
+            print(f"Completed:  {file_path}")
+        except Exception as err:
+            failed.append((file_path, err))
+            print(f"Failed:     {file_path} -- {err}")
+
+    # ---- Summary ----
+    print()
+    print("=" * 60)
+    print(f"Processed {len(csv_files)} file(s): "
+          f"{succeeded} succeeded, {len(failed)} failed.")
+    if failed:
+        print("Failures:")
+        for file_path, err in failed:
+            print(f"  - {file_path}: {err}")
+
+
+if __name__ == '__main__':
+    main()
+
