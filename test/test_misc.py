@@ -3,6 +3,7 @@
 
 import math
 
+import numpy as np
 import pytest
 
 from pupilio.misc import (
@@ -73,6 +74,35 @@ def calculator():
     )
 
 
+class TestCalculatorConstruction:
+    def test_model_name_is_optional(self, calculator):
+        # Constructor accepts an extra keyword so callers can forward a config
+        # dict (e.g. LocalConfig.dp_config) without filtering unused keys.
+        assert calculator.model_name is None
+
+    def test_model_name_is_stored_when_given(self):
+        calc = Calculator(
+            screen_width=1920,
+            screen_height=1080,
+            physical_screen_width=34.13,
+            physical_screen_height=19.32,
+            model_name="Pupil.IO AIO",
+        )
+        assert calc.model_name == "Pupil.IO AIO"
+
+    def test_unknown_keyword_raises(self):
+        # The previous *args/**kwargs signature silently swallowed anything;
+        # now an unexpected keyword is a TypeError, which is what callers want.
+        with pytest.raises(TypeError):
+            Calculator(
+                screen_width=1920,
+                screen_height=1080,
+                physical_screen_width=34.13,
+                physical_screen_height=19.32,
+                not_a_real_parameter=1,
+            )
+
+
 class TestCalculatorPxToCm:
     def test_origin_maps_to_origin(self, calculator):
         assert calculator.px_2_cm([0, 0]) == [0, 0]
@@ -112,6 +142,22 @@ class TestCalculatorError:
         offset_cm = 100 * 34.13 / 1920
         expected = 2 * math.degrees(math.atan(offset_cm / (2 * 60)))
         assert calculator.error([0, 0], [100, 0], 60) == pytest.approx(expected)
+
+    def test_zero_distance_returns_infinite_error(self, calculator):
+        # arctan(offset / 0) is undefined; the guard returns inf rather than
+        # raising ZeroDivisionError so a missing or corrupt distance sample
+        # degrades to "no valid window" instead of crashing calibration.
+        assert calculator.error([960, 540], [1000, 540], 0) == float("inf")
+
+    def test_negative_distance_returns_infinite_error(self, calculator):
+        assert calculator.error([960, 540], [1000, 540], -10) == float("inf")
+
+    def test_nan_distance_returns_infinite_error(self, calculator):
+        assert calculator.error([960, 540], [1000, 540], float("nan")) == float("inf")
+
+    def test_infinite_distance_returns_infinite_error(self, calculator):
+        # math.isfinite() rejects inf as well as NaN.
+        assert calculator.error([960, 540], [1000, 540], float("inf")) == float("inf")
 
 
 class TestCalculatorSlidingWindow:
@@ -160,13 +206,15 @@ class TestCalculatorSlidingWindow:
     def test_too_few_samples_returns_infinite_error(self, calculator, n_samples):
         # Fewer than one full window cannot produce an estimate; validation relies
         # on this returning inf rather than raising, so a blink does not crash
-        # the calibration routine.
+        # the calibration routine. min_error_es_point is a numpy array on both
+        # the success and failure paths, so compare with array_equal rather than
+        # == (which would produce an element-wise boolean and trip pytest).
         result = calculator.calculate_error_by_sliding_window(
             [960, 540], [[960, 540]] * n_samples, [60.0] * n_samples
         )
 
         assert result["min_error"] == float("inf")
-        assert result["min_error_es_point"] == (0, 0)
+        assert np.array_equal(result["min_error_es_point"], (0, 0))
 
     def test_mismatched_distances_returns_infinite_error(self, calculator):
         result = calculator.calculate_error_by_sliding_window(
@@ -181,3 +229,15 @@ class TestCalculatorSlidingWindow:
         )
 
         assert result["min_error"] == pytest.approx(0.0)
+
+    def test_non_numeric_sample_returns_infinite_error(self, calculator):
+        # Malformed input (a string instead of a coordinate) is caught by the
+        # narrowed except clause. Real bugs inside error() / np.mean are not
+        # swallowed, so this test pins the boundary of what degrades gracefully.
+        result = calculator.calculate_error_by_sliding_window(
+            [960, 540], [["not", "numeric"]] * 6, [60.0] * 6
+        )
+
+        assert result["min_error"] == float("inf")
+        assert np.array_equal(result["min_error_es_point"], (0, 0))
+

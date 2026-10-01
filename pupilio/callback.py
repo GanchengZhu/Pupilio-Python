@@ -31,55 +31,44 @@
 
 # Author: GC Zhu
 # Email: zhugc2016@gmail.com
+# Last updated: 2026/10/01 by Zhiguo Wang
+
+__all__ = ["CalibrationListener"]
 
 class CalibrationListener:
     """
-    A listener class to handle events during a calibration process. This class defines
-    methods that can be overridden to perform specific actions when calibration or
-    validation targets are presented during gaze calibration.
+    Hook interface for events raised during a calibration / validation run.
 
-    Attributes:
-        None
+    Subclass and assign an instance to ``config.calibration_listener`` to receive
+    notifications when targets are presented. Every method is a no-op by default, so
+    subclasses only need to override the hooks they actually care about.
 
-    Methods:
-        __init__(): Initializes the listener instance.
-        on_calibration_target_onset(point_index): Called when a calibration target is presented.
-        on_validation_target_onset(point_index): Called when a validation target is presented.
+    The built-in UI currently fires :meth:`on_calibration_target_onset`. The
+    validation hook is part of the public surface and reserved for tooling that drives
+    its own validation loop; it is not invoked by the shipped calibration UI.
     """
 
-    def __init__(self):
+    def on_calibration_target_onset(self, point_index: int) -> None:
         """
-        Initializes the CalibrationListener instance.
+        Called when a calibration target is presented on the screen.
 
-        This method can be used to set up any initial state or parameters required for the listener.
-        By default, it does nothing.
-        """
-        pass
-
-    def on_calibration_target_onset(self, point_index):
-        """
-        This method is called when a calibration target is presented on the screen.
+        Invoked once per target, immediately after the UI advances to it. Override to
+        log, timestamp, or trigger a stimulus-locked event.
 
         Args:
-            point_index (int): The index of the current calibration target. This can be used
-            to identify the target's position or other characteristics specific to the calibration
-            process.
-
-        This method can be overridden to define actions that should occur when a calibration target
-        is shown (e.g., logging, updating UI, or triggering an event).
+            point_index (int): Zero-based index of the current calibration target.
         """
-        pass
+        # Intentionally a no-op; subclasses override.
 
-    def on_validation_target_onset(self, point_index):
+    def on_validation_target_onset(self, point_index: int) -> None:
         """
-        This method is called when a validation target is presented on the screen.
+        Called when a validation target is presented on the screen.
+
+        Reserved for tooling that drives its own validation loop. The shipped
+        calibration UI does **not** currently fire this hook — overriding it is safe
+        but will not receive events from the default validation pass.
 
         Args:
-            point_index (int): The index of the current validation target. Similar to the calibration
-            target, this can be used to identify the target's position or other properties related to
-            the validation process.
-
-        This method can be overridden to define actions that should occur when a validation target
-        is shown (e.g., logging, updating UI, or triggering an event).
+            point_index (int): Zero-based index of the current validation target.
         """
-        pass
+        # Intentionally a no-op; subclasses override.

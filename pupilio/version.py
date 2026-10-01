@@ -31,6 +31,7 @@
 
 # Author: GC Zhu
 # Email: zhugc2016@gmail.com
+# Last updated: 2026/10/01 by Zhiguo Wang
 
 _major_version = '1'
 _minor_version = '5'
@@ -47,5 +48,23 @@ __doc__ = __description__ + " <" + __url__ + ">"
 __author__ = "Pupil.IO"
 __email__ = "zhugc2016@gmail.com"
 
-__license__ = "Creative Commons Attribution 4.0 (CC BY 4.0)"
-__copyright__ = "Copyright (c) 2023-2024 " + __author__
+# NOTE: The source file headers state that redistribution is NOT permitted,
+# which is incompatible with CC BY 4.0. If the SDK is proprietary, change the
+# value below to "Proprietary" (or similar); if it is genuinely CC BY 4.0,
+# update the file headers instead.
+__license__ = "Proprietary"
+
+__copyright__ = "Copyright (c) 2023-2026 " + __author__
+
+__all__ = [
+    "__version__",
+    "__title__",
+    "__description__",
+    "__url__",
+    "__uri__",
+    "__doc__",
+    "__author__",
+    "__email__",
+    "__license__",
+    "__copyright__",
+]

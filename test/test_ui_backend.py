@@ -28,6 +28,7 @@ class TestUIBackendContract:
             ("after_draw", ()),
             ("check_action", ()),
             ("clear_events", ()),
+            ("set_mouse_visible", (True,)),
         ],
     )
     def test_every_drawing_operation_must_be_overridden(self, backend, method, args):
@@ -84,6 +85,22 @@ class TestPyGameUIBackend:
         image = np.zeros((32, 16, 3), dtype=np.uint8)
         backend.draw_texture(image, (0, 0, 200, 100))
 
+    def test_draw_texture_preserves_colour_channels(self, backend, pygame_screen):
+        # core._process_images builds its frames with cv2, which produces BGR
+        # arrays. pygame.surfarray.make_surface interprets the last axis as RGB.
+        # Without the BGR->RGB conversion inside draw_texture, red and blue come
+        # out swapped in the eye preview. A pure-blue pixel in BGR (B=255) must
+        # therefore land as pure blue on the destination surface.
+        blue_bgr = np.zeros((4, 4, 3), dtype=np.uint8)
+        blue_bgr[:, :, 0] = 255  # blue channel in BGR order
+
+        backend.before_draw((0, 0, 0))
+        backend.draw_texture(blue_bgr, (100, 100, 4, 4))
+
+        r, g, b = pygame_screen.get_at((102, 102))[:3]
+        assert b > 200, f"expected a blue-dominant pixel, got ({r}, {g}, {b})"
+        assert r < 50, f"expected red near zero (channels swapped?), got ({r}, {g}, {b})"
+
     def test_draw_image_caches_by_path(self, backend):
         from pupilio.default_config import DefaultConfig
 
@@ -101,7 +118,14 @@ class TestPyGameUIBackend:
 
     @pytest.mark.parametrize(
         "key, expected",
-        [("K_RETURN", "continue"), ("K_r", "recali"), ("K_q", "quit"), ("K_ESCAPE", "quit")],
+        [
+            ("K_RETURN", "continue"),
+            ("K_SPACE", "continue"),
+            ("K_r", "recali"),
+            ("K_q", "quit"),
+            ("K_ESCAPE", "quit"),
+            ("K_p", "toggle_preview"),
+        ],
     )
     def test_keyboard_actions(self, backend, key, expected):
         import pygame
@@ -163,3 +187,4 @@ class TestPsychoPyUIBackend:
         assert backend.pixel_to_psychopy_coordinate(960, 540) == (0, 0)
         assert backend.pixel_to_psychopy_coordinate(0, 0) == (-960, 540)
         assert backend.pixel_to_psychopy_coordinate(1920, 1080) == (960, -540)
+

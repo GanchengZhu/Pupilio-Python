@@ -70,7 +70,6 @@ config.cali_mode = 4
 
 # Run the script in gaze simulation mode, i.e., any Windows computer; here we set it to 0
 config.simulation_mode = 0
-config.enable_kappa_verification = 1
 
 # ---- Instantiate tracker object and create a session ----
 # instantiate a tracker object

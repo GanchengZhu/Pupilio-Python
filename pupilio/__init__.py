@@ -27,21 +27,14 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # DESCRIPTION:
-# This demo shows how to configure the calibration process
+# Pupil.IO package entry point.
 
 # Author: GC Zhu
 # Email: zhugc2016@gmail.com
+# Last updated: 2026/10/01 by Zhiguo Wang
 
-# _*_ coding: utf-8 _*_
-# Author: GC Zhu
-# Email: zhugc2016@gmail.com
-
-# _*_ coding: utf-8 _*_
-# Author: GC Zhu
-# Email: zhugc2016@gmail.com
-
-import logging
 import importlib
+import logging
 
 __all__ = [
     'Pupilio',
@@ -54,13 +47,17 @@ __all__ = [
     'CameraMode',
     'LSLManager',
     'PupilioLSLOutlet',
-    '__version__'
+    '__version__',
 ]
 
-# 配置日志记录器
+# Add a NullHandler so the library never emits "no handler found" warnings when
+# the embedding application has not configured logging. Sub-loggers like
+# ``pupilio.core`` inherit this handler.
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
-# 建立 属性/类名 -> 对应子模块 的映射表
+# Map public name -> submodule that defines it. Used by ``__getattr__`` below to
+# resolve attributes lazily, so ``import pupilio`` stays cheap and does not pull
+# in numpy / ctypes / pylsl until the caller actually needs them.
 _MODULE_MAP = {
     'Pupilio': '.core',
     'DefaultConfig': '.default_config',
@@ -72,20 +69,27 @@ _MODULE_MAP = {
     'CameraMode': '.misc',
     'LSLManager': '.lsl',
     'PupilioLSLOutlet': '.lsl',
-    '__version__': '.version'
+    '__version__': '.version',
 }
 
 
 def __getattr__(name):
-    # 如果请求的名称在映射表中，则动态导入对应模块
-    if name in _MODULE_MAP:
-        module_name = _MODULE_MAP[name]
-        module = importlib.import_module(module_name, __package__)
-        return getattr(module, name)
+    """
+    Resolve a public name to its defining submodule on first access.
 
-    # 如果请求的名称不存在，抛出标准 AttributeError
+    The resolved value is cached into the module globals so subsequent lookups
+    bypass this function entirely. Names not listed in ``_MODULE_MAP`` raise the
+    standard ``AttributeError``.
+    """
+    if name in _MODULE_MAP:
+        module = importlib.import_module(_MODULE_MAP[name], __package__)
+        value = getattr(module, name)
+        globals()[name] = value  # cache for later lookups
+        return value
+
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
 def __dir__():
-    return __all__
+    """Return a fresh copy of ``__all__`` so callers cannot mutate it in place."""
+    return list(__all__)

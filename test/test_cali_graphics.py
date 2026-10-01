@@ -138,13 +138,26 @@ class TestInitialisation:
 
 
 class TestPhaseTransitions:
-    def test_quit_exits_immediately(self, make_ui):
-        ui, backend = make_ui(actions=["quit"])
+    def test_quit_during_head_adjustment_skips_to_the_prompt(self, make_ui):
+        # The first 'quit' during head adjustment is treated as "skip this
+        # phase", not "abort" — the routine advances to the calibration prompt
+        # and keeps running until something else exits it.
+        ui, backend = make_ui(actions=["quit", "quit"])
 
         ui.draw(validate=False)
 
         assert ui._exit is True
-        assert backend.frames == 1
+
+    def test_first_quit_does_not_abort_while_in_head_adjustment(self, make_ui):
+        # Guards the "first quit skips head adjustment" behaviour explicitly.
+        # A single quit only advances the phase; the loop then hits max_frames
+        # and the backend's own 'quit' ends the run.
+        ui, backend = make_ui(actions=["quit"], max_frames=5)
+
+        ui.draw(validate=False)
+
+        assert backend.capped is True
+        assert ui._phase_adjust_position is False
 
     def test_continue_advances_from_adjustment_to_the_prompt(self, make_ui):
         ui, backend = make_ui(actions=["continue", "quit"])
@@ -288,6 +301,13 @@ class TestRendering:
         assert pupil_io.config.instruction_head_center in backend.texts()
 
     def test_face_preview_is_drawn_when_enabled(self, make_ui, pupil_io):
+        # The preview *pipeline* is what this test cares about, not whether the
+        # dummy DLL happens to implement pupil_io_get_previewer. core.get_preview_images
+        # now returns None when the native call fails, which would suppress the
+        # texture draw; stub it so the test exercises the rendering path directly.
+        fake_left = np.zeros((1, 1, 3), dtype=np.uint8)
+        fake_right = np.zeros((1, 1, 3), dtype=np.uint8)
+        pupil_io.get_preview_images = lambda: (fake_left, fake_right)
         pupil_io.config.face_previewing = 1
         ui, backend = make_ui(actions=["quit"])
 
@@ -305,6 +325,21 @@ class TestRendering:
             pupil_io.config.face_previewing = original
 
         assert "draw_texture" not in backend.names()
+
+    def test_preview_failure_does_not_abort_the_frame(self, make_ui, pupil_io):
+        # If the native call fails, get_preview_images returns None. The UI must
+        # skip the texture draw for that frame and keep going — a transient
+        # preview failure should not abort calibration.
+        pupil_io.get_preview_images = lambda: None
+        pupil_io.config.face_previewing = 1
+        ui, backend = make_ui(actions=["quit"])
+
+        ui.draw(validate=False)
+
+        assert "draw_texture" not in backend.names()
+        # The frame still ran end to end.
+        assert "before_draw" in backend.names()
+        assert "after_draw" in backend.names()
 
 
 class TestSoundHelpers:
@@ -341,7 +376,9 @@ class TestInputBuffering:
 
         ui.draw(validate=False)
 
-        # Once at startup, once on entering the calibration prompt.
+        # Fires once at startup, once per frame for the first few frames after
+        # entry, and once again when the calibration prompt appears — so the
+        # exact count is implementation-defined but must be at least two.
         assert backend.names().count("clear_events") >= 2
 
 

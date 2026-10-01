@@ -31,11 +31,13 @@
 
 # Author: GC Zhu
 # Email: zhugc2016@gmail.com
+# Last updated: 2026/10/01 by Zhiguo Wang
 
 import logging
 import math
 from enum import Enum, unique
 from enum import IntEnum
+from typing import Optional
 
 import numpy as np
 
@@ -43,16 +45,17 @@ logger = logging.getLogger(__name__)
 
 
 @unique
-class StrEnum(str, Enum):
+class _StrEnum(str, Enum):
     """
-    Enum where members are unique and are also strings
+    Internal string-valued enum base class.
+
+    Deliberately underscore-prefixed so it does not shadow ``enum.StrEnum`` (Python 3.11+).
+    Members declared here are expected to provide their own string values; this base class
+    exists only to give ``str``-flavoured equality and hashing to the concrete enums below.
     """
 
-    def _generate_next_value_(name, start, count, last_values):
-        return name
 
-
-class EventType(StrEnum):
+class EventType(_StrEnum):
     START_FIXATION = "start_fixation"
     END_FIXATION = "end_fixation"
     IN_FIXATION = "in_fixation"
@@ -91,6 +94,14 @@ class CalibrationMode(IntEnum):
 
 
 class CameraMode(IntEnum):
+    """
+    Camera frame-rate / ROI modes reported by the native tracker.
+
+    Values are an ABI contract with the DLL. Only ``SYNC_200``, ``SYNC_400``, and
+    ``ASYNC_400`` are exercised by the current initialization path (see
+    ``core.HARDWARE_RATES``); ``SYNC_800`` and ``SYNC_1000`` are declared for forward
+    compatibility and fall back to 200 Hz in ``query_support_sampling_rate``.
+    """
     CAMERA_MODE_SYNC_400 = 0
     CAMERA_MODE_SYNC_800 = 1
     CAMERA_MODE_SYNC_1000 = 2
@@ -107,15 +118,14 @@ class ActiveEye(IntEnum):
 
 class LocalConfig:
     """
-    Class to handle local configuration settings.
-    This class loads a JSON configuration file for deep configuration settings.
+    Container for the tracker's hardware / display parameters.
+
+    Currently holds a static dictionary of defaults that mirror the shipped
+    ``Pupil.IO AIO`` panel. The ``dp_config`` dict is not consumed by any code path in
+    this package yet — it is reserved for a future file-backed configuration loader.
     """
 
     def __init__(self):
-        """
-        Initialize LocalConfig.
-        This loads a JSON configuration file and stores it in 'dp_config'.
-        """
         self.dp_config = {
             "model_name": "Pupil.IO AIO",
             "screen_width": 1920,
@@ -131,7 +141,14 @@ class Calculator:
     This class can calculate error metrics based on pixel values and distances.
     """
 
-    def __init__(self, screen_width, screen_height, physical_screen_width, physical_screen_height, *args, **kwargs):
+    def __init__(
+        self,
+        screen_width,
+        screen_height,
+        physical_screen_width,
+        physical_screen_height,
+        model_name: Optional[str] = None,
+    ):
         """
         Initialize Calculate with screen dimensions.
 
@@ -139,11 +156,15 @@ class Calculator:
         :param screen_height: Screen height in pixels.
         :param physical_screen_width: Physical screen width in inches.
         :param physical_screen_height: Physical screen height in inches.
+        :param model_name: Optional tracker model name; stored for reference only and not
+            used in any calculation. Accepted so callers can forward a configuration dict
+            (e.g. ``LocalConfig.dp_config``) without filtering out unused keys.
         """
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.physical_screen_width = physical_screen_width
         self.physical_screen_height = physical_screen_height
+        self.model_name = model_name
 
     def error(self, gt_pixel, es_pixel, distance):
         """
@@ -159,8 +180,13 @@ class Calculator:
             distance (float): Viewing distance from eye to screen, in centimetres.
 
         Returns:
-            float: Error in degrees of visual angle.
+            float: Error in degrees of visual angle, or ``inf`` when the viewing distance
+            is not a positive finite number (the angle is undefined in that case).
         """
+        # Guard against zero / negative / NaN distance — arctan of a division by zero
+        # would raise, and a NaN would silently poison every downstream average.
+        if distance is None or not math.isfinite(distance) or distance <= 0:
+            return float("inf")
 
         gt_pixel = self.px_2_cm(gt_pixel)
         es_pixel = self.px_2_cm(es_pixel)
@@ -203,26 +229,50 @@ class Calculator:
         Returns:
             dict: With keys ``min_error`` (degrees of visual angle, ``inf`` when it cannot
             be computed), ``min_error_es_point`` (the mean gaze position of the best
-            window), and ``gt_point`` (the target, echoed back). Fewer than five samples or
-            mismatched inputs yield the ``inf`` result rather than raising.
+            window, as a float64 ``ndarray`` of shape ``(2,)``), and ``gt_point`` (the
+            target, echoed back). Fewer than five samples or malformed input yield the
+            ``inf`` result rather than raising.
         """
+        # Sentinel returned on every failure path so callers can rely on the type of
+        # min_error_es_point being consistent whether or not a valid window was found.
+        _failure = {
+            "min_error": float("inf"),
+            "min_error_es_point": np.zeros(2, dtype=np.float64),
+            "gt_point": gt_point,
+        }
 
         min_error = float("inf")
-        min_error_es_point = (0, 0)
+        min_error_es_point = np.zeros(2, dtype=np.float64)
+
+        # Narrow the except clause to the exceptions we actually expect from malformed
+        # input (short sequences, mismatched lengths, non-numeric entries). Real bugs
+        # inside Calculator.error / np.mean should propagate rather than be swallowed.
         try:
-            error_list = [self.error(gt_pixel=gt_point, es_pixel=es_points[n],
-                                     distance=distances[n]) for n in range(len(es_points))]
+            error_list = [
+                self.error(gt_pixel=gt_point, es_pixel=es_points[n], distance=distances[n])
+                for n in range(len(es_points))
+            ]
 
             for i in range(len(error_list) - 4):
                 error = np.mean(error_list[i:i + 5])
                 if min_error > error:
                     min_error = error
                     min_error_es_point = np.mean(es_points[i:i + 5], axis=0)
-            return {"min_error": min_error, "min_error_es_point": min_error_es_point, "gt_point": gt_point
-                    }
-        except Exception as e:
-            logger.debug(f"calculate_error_by_sliding_window could not compute an error: {e}")
-            return {"min_error": float("inf"), "min_error_es_point": (0, 0), "gt_point": gt_point}
+
+            return {
+                "min_error": min_error,
+                "min_error_es_point": min_error_es_point,
+                "gt_point": gt_point,
+            }
+        except (IndexError, TypeError, ValueError) as e:
+            # IndexError: mismatched lengths; TypeError/ValueError: non-numeric entries.
+            # Anything else (AttributeError, ZeroDivisionError, ...) is a real bug and
+            # should surface in the logs at the call site, not be masked here.
+            logger.warning(
+                f"calculate_error_by_sliding_window could not compute an error "
+                f"(bad input): {e}"
+            )
+            return _failure
 
 
 if __name__ == '__main__':
@@ -239,4 +289,4 @@ if __name__ == '__main__':
           [1, 2], [2, 3], [4, 5], [5, 6], [7, 8]]
     gt = [0, 0]
     distans = [57, 56.5, 58.5, 58, 57, 57, 56.5, 58.5, 58, 57, 57, 56.5, 58.5, 58, 57]
-    print(cal.calculate_error_by_sliding_window(gt, es, distans))
+    logger.info(cal.calculate_error_by_sliding_window(gt, es, distans))

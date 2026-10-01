@@ -31,9 +31,9 @@
 # DESCRIPTION:
 # UI backend.
 
-# Author: Gancheng Zhu
+# Author: GC Zhu
 # Email: zhugc2016@gmail.com
-# Last updated: 6/20/2026 by Zhiguo Wang
+# Last updated: 2026/10/01 by Zhiguo Wang
 
 from typing import Tuple
 
@@ -161,8 +161,9 @@ class UIBackend:
         Poll input and report the participant's requested action.
 
         Returns:
-            str | None: 'continue' to advance, 'recali' to restart calibration, 'quit' to
-            abort, or None when nothing was pressed.
+            str | None: 'continue' to advance, 'recali' to restart calibration,
+            'toggle_preview' to flip the camera preview, 'quit' to abort, or None
+            when nothing was pressed.
         """
         raise NotImplementedError
 
@@ -363,6 +364,7 @@ class PsychoPyUIBackend(UIBackend):
         # 1. Clear the default (pygame/PTB) keyboard backend
         self.event.clearEvents()
         self.mouse.clickReset()
+        self._last_mouse_pressed = [0, 0, 0]  # <-- new
 
         # 2. Also clear ioHub, because PsychoPy Builder-generated experiments
         #    route keyboard input through an ioHub Keyboard device, and its
@@ -444,14 +446,19 @@ class PyGameUIBackend(UIBackend):
         self.win.blit(scaled_image, (int(rect[0]), int(rect[1])))
 
     def draw_texture(self, img: np.ndarray, rect: Tuple[int, int, int, int]):
-        # img 形状为 (H, W, 3) RGB，Pygame 的 surfarray 需要 (W, H, 3)
-        transposed_img = np.transpose(img, (1, 0, 2))
+        # cv2 produces BGR; pygame.surfarray.make_surface wants RGB.
+        rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        transposed_img = np.transpose(rgb, (1, 0, 2))
         surface = self.pygame.surfarray.make_surface(transposed_img)
         scaled_surface = self.pygame.transform.scale(surface, (int(rect[2]), int(rect[3])))
         self.win.blit(scaled_surface, (int(rect[0]), int(rect[1])))
 
     def draw_rect(self, rect, color, line_width):
-        self.pygame.draw.rect(self.win, color, rect, line_width)
+        self.pygame.draw.rect(
+            self.win, color,
+            (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3])),
+            int(line_width),
+        )
 
     def _get_font(self, font_name, font_size):
         try:

@@ -33,7 +33,7 @@
 
 # Author: Gancheng Zhu
 # Email: zhugc2016@gmail.com
-# Last updated: 6/20/2026 by Zhiguo Wang
+# Last updated: 2026/10/01 by Zhiguo Wang
 
 import os
 import time
@@ -347,18 +347,17 @@ class CalibrationUI:
             else:
                 self._hands_free_start_timestamp = 0
 
-
     def _draw_previewer(self):
-        """
-        Draw the live camera preview for both eyes.
+        preview = self._pupil_io.get_preview_images()
+        if preview is None:
+            # Native preview unavailable this frame; skip drawing and retry next frame.
+            return
+        _left_img, _right_img = preview
 
-        Each frame is rotated and flipped into screen orientation, then drawn to the outer
-        edges of the display so the central head-position guide stays unobstructed.
-        """
-        _left_img, _right_img = self._pupil_io.get_preview_images()
         import cv2
         _left_img = cv2.resize(_left_img, (512, 512))
         _right_img = cv2.resize(_right_img, (512, 512))
+
         # _left_img = cv2.rotate(cv2.resize(_left_img, (512, 512)), cv2.ROTATE_180)
         # _right_img = cv2.rotate(cv2.resize(_right_img, (512, 512)), cv2.ROTATE_180)
         # _left_img = cv2.flip(_left_img, 0)
@@ -417,18 +416,6 @@ class CalibrationUI:
             f"{self.config.instruction_calibration_over}"
         )
 
-    def _finish_calibration(self):
-        """
-        Leave the calibration phase for validation, or exit when validation is not wanted.
-        """
-        self._phase_calibration = False
-        self._phase_calibration_failed = False
-        if self._need_validation and self._cali_mode > 0:
-            self._validation_preparing = not self._hands_free
-            self._phase_validation = self._hands_free
-            self._clear_pending_input()
-        else:
-            self._exit = True
 
     def _draw_calibration_point(self):
         """
@@ -459,7 +446,10 @@ class CalibrationUI:
             self.stop_sound(self._sound_beep)
             self._finish_calibration()
         elif _status == ET_ReturnCode.ET_FAILED.value:
-            print('ET_FAILED: restarting from instructions if kappa verification is enabled')
+            logger.info(
+                "Calibration reported ET_FAILED; restarting from instructions "
+                "if kappa verification is enabled."
+            )
             self.stop_sound(self._sound_beep)
             self._phase_calibration = False
             if self._should_prompt_on_calibration_failure():

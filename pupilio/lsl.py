@@ -1,10 +1,41 @@
+#!/usr/bin/env python
 # _*_ coding: utf-8 _*_
+
 # Copyright (c) 2026, Hangzhou DeepGaze Science and Technology Co., Ltd
 # All Rights Reserved
+#
+# For use by Hangzhou DeepGaze Science and Technology Co., Ltd customers
+# only. Redistribution and use in source and binary forms, with or without
+# modification, are NOT permitted.
+#
+# Redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in
+# the documentation and/or other materials provided with the distribution.
+#
+# Neither name of Hangzhou DeepGaze Sci & Tech Ltd nor the name of
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ``AS
+# IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+# TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+# PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+# LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+# NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
 #
 # DESCRIPTION:
 # LabStreamingLayer (LSL) integration for Pupilio Eye Tracker SDK.
 # Supports real-time streaming of continuous gaze data and discrete marker events.
+
+# Author: GC Zhu
+# Email: zhugc2016@gmail.com
+# Last updated: 2026/10/01 by Zhiguo Wang
 
 from __future__ import annotations
 
@@ -233,6 +264,11 @@ class LSLManager:
     """
     High-level manager for LabStreamingLayer (LSL) integration in Pupilio SDK.
     Manages Gaze and Marker StreamInfo, StreamOutlets, and background streaming.
+
+    Lifecycle (``start`` / ``stop``) is thread-safe: concurrent calls are serialized by
+    an internal lock, and ``stop`` will not orphan a still-running worker. If the worker
+    does not exit within the join timeout, the reference is kept so a subsequent
+    ``start`` cannot accidentally spawn a second worker on top of the first.
     """
 
     def __init__(
@@ -272,6 +308,10 @@ class LSLManager:
 
         self._trigger_lock = threading.Lock()
         self._active_trigger: int = 0
+
+        # Serializes start()/stop() so concurrent callers can't both spawn
+        # (or both tear down) the worker thread.
+        self._lifecycle_lock = threading.Lock()
 
         self._init_outlets()
 
@@ -333,21 +373,45 @@ class LSLManager:
         )
 
     def start(self):
-        """Start the background streaming worker thread."""
-        if self.worker_thread is not None and self.worker_thread.is_alive():
-            logger.warning("LSL streaming is already running.")
-            return
+        """
+        Start the background streaming worker thread.
 
-        self.clock_sync.reset()
-        self.worker_thread = LSLWorkerThread(self)
-        self.worker_thread.start()
-        logger.info("LSL streaming started successfully.")
+        Thread-safe and idempotent: if a worker is already alive this is a no-op.
+        """
+        with self._lifecycle_lock:
+            if self.worker_thread is not None and self.worker_thread.is_alive():
+                logger.info("LSL streaming is already running; start() is a no-op.")
+                return
+
+            self.clock_sync.reset()
+            self.worker_thread = LSLWorkerThread(self)
+            self.worker_thread.start()
+            logger.info("LSL streaming started successfully.")
 
     def stop(self):
-        """Stop the background streaming worker thread."""
-        if self.worker_thread is not None:
+        """
+        Stop the background streaming worker thread.
+
+        Thread-safe and idempotent. If the worker does not exit within the join timeout,
+        the reference is preserved so a subsequent ``start()`` cannot spawn a second
+        worker on top of a still-running one.
+        """
+        with self._lifecycle_lock:
+            if self.worker_thread is None:
+                logger.info("LSL streaming is not running; stop() is a no-op.")
+                return
+
             self.worker_thread.stop()
             self.worker_thread.join(timeout=2.0)
+
+            if self.worker_thread.is_alive():
+                logger.warning(
+                    "LSL worker did not exit within 2.0s (stuck in a native call or "
+                    "starved of CPU). Keeping the thread reference so start() will not "
+                    "spawn a second worker; retry stop() once the worker is responsive."
+                )
+                return
+
             self.worker_thread = None
             logger.info("LSL streaming stopped.")
 

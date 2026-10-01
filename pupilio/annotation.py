@@ -28,61 +28,73 @@
 #
 # DESCRIPTION:
 #
-
 # !/usr/bin/python
 # Author: GC Zhu
 # Email: zhugc2016@gmail.com
+# Last updated: 2026/10/01 by Zhiguo Wang
 
+import inspect
 import warnings
 from functools import wraps
+from typing import Callable
 
 
 # Decorator to mark functions as deprecated with version information
-def deprecated(version, tips=""):
+def deprecated(version: str, tips: str = "") -> Callable:
     """
     A decorator to mark functions as deprecated with a specified version.
 
     This decorator issues a warning whenever a deprecated function is called,
     informing the user about the deprecation and the version it was introduced in.
 
+    Both synchronous and asynchronous functions are supported; ``async def`` targets
+    keep their coroutine nature so the decorated call still has to be awaited.
+
     Args:
         version (str): The version in which the function was deprecated.
-        tips (str): The tips message to show in the warning message.
+        tips (str): Additional message appended to the warning.
 
     Returns:
-        function: The decorated function that issues a warning when called.
+        Callable: A decorator that wraps the target function so that calling it emits
+        a :class:`DeprecationWarning` before delegating to the original implementation.
     """
 
-    def decorator(func):
+    def decorator(func: Callable) -> Callable:
         """
         The actual decorator that wraps the target function.
 
         Args:
-            func (function): The function being decorated.
+            func (Callable): The function being decorated.
 
         Returns:
-            function: A wrapper function that adds deprecation warning functionality.
+            Callable: A wrapper that adds deprecation warning functionality.
         """
+        warning_message = (
+            f"The function '{func.__name__}' is deprecated since version "
+            f"{version} and will be removed in future versions. {tips}"
+        )
 
-        @wraps(func)  # Ensures the decorated function retains its original name and docstring
+        if inspect.iscoroutinefunction(func):
+            @wraps(func)
+            async def wrapper(*args, **kwargs):
+                warnings.warn(
+                    warning_message,
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                return await func(*args, **kwargs)
+
+            return wrapper
+
+        @wraps(func)
         def wrapper(*args, **kwargs):
-            """
-            The wrapper function that issues the deprecation warning and calls the original function.
-
-            Args:
-                *args: Positional arguments passed to the original function.
-                **kwargs: Keyword arguments passed to the original function.
-
-            Returns:
-                The return value of the original function.
-            """
             warnings.warn(
-                f"The function '{func.__name__}' is deprecated since version {version} and will be removed in"
-                f" future versions. {tips}",
-                DeprecationWarning,  # Specifies that this is a deprecation warning
+                warning_message,
+                DeprecationWarning,
+                stacklevel=2,
             )
-            return func(*args, **kwargs)  # Calls the original function
+            return func(*args, **kwargs)
 
-        return wrapper  # Return the wrapped version of the function
+        return wrapper
 
-    return decorator  # Return the decorator function
+    return decorator

@@ -6,8 +6,10 @@
 # Unit and integration tests for LabStreamingLayer (LSL) integration in Pupilio SDK.
 
 import time
-import pytest
+
 import pylsl
+import pytest
+
 from pupilio import Pupilio, DefaultConfig, ET_ReturnCode
 from pupilio.lsl import (
     STANDARD_GAZE_CHANNELS,
@@ -168,8 +170,117 @@ class TestLSLStreamingSimulation:
             assert len(sample) == 39
             assert timestamp > 0
 
+            # The 39-field ordering is the most fragile part of the LSL spec;
+            # verify the advertised channel labels match what the docstring and
+            # channel-spec list claim, not just the count.
+            info = inlet.info()
+            channel = info.desc().child("channels").child("channel")
+            labels = []
+            for _ in range(info.channel_count()):
+                labels.append(channel.child_value("label"))
+                channel = channel.next_sibling()
+
+            assert labels[0] == "left_gaze_x"
+            assert labels[13] == "left_valid"
+            assert labels[14] == "right_gaze_x"
+            assert labels[27] == "right_valid"
+            assert labels[28] == "bino_gaze_x"
+            assert labels[38] == "trigger"
+
         finally:
             if 'inlet' in locals():
                 inlet.close_stream()
             pupil_io.stop_sampling()
             pupil_io.release()
+
+
+class TestSamplingIdempotency:
+    """
+    Pins the idempotent start/stop semantics.
+
+    ``stop_sampling`` used to raise when no session was running, and
+    ``start_sampling`` used to raise when one was already active. Both are now
+    no-ops that return ``ET_SUCCESS``. The tests here fail loudly if either
+    reverts, so a caller relying on the new contract is not surprised by a
+    runtime error in production.
+    """
+
+    @pytest.fixture
+    def pupil_io(self):
+        config = DefaultConfig()
+        config.simulation_mode = True
+        tracker = Pupilio(config=config)
+        try:
+            yield tracker
+        finally:
+            tracker.release()
+
+    def test_stop_without_start_is_a_noop(self, pupil_io):
+        # The native call would dereference a null sampling thread if it ran.
+        # The guard must short-circuit and return success rather than raising.
+        assert pupil_io.stop_sampling() == ET_ReturnCode.ET_SUCCESS
+
+    def test_double_start_is_a_noop(self, pupil_io):
+        pupil_io.create_session("idempotent_start")
+        pupil_io.start_sampling()
+        try:
+            assert pupil_io.start_sampling() == ET_ReturnCode.ET_SUCCESS
+            assert pupil_io.get_sampling_status() is True
+        finally:
+            pupil_io.stop_sampling()
+
+    def test_double_stop_is_a_noop(self, pupil_io):
+        pupil_io.create_session("idempotent_stop")
+        pupil_io.start_sampling()
+        pupil_io.stop_sampling()
+        assert pupil_io.stop_sampling() == ET_ReturnCode.ET_SUCCESS
+
+
+class TestLSLManagerLifecycle:
+    """
+    Pins the thread-safe start/stop contract of ``LSLManager``.
+
+    The two methods are now serialized by an internal lock and are safe to call
+    twice. A second ``start()`` must not spawn a duplicate worker (which would
+    double every sample in the recorded stream), and a second ``stop()`` must
+    not raise. These tests exercise both.
+    """
+
+    @pytest.fixture
+    def manager(self):
+        config = DefaultConfig()
+        config.simulation_mode = True
+        config.enable_lsl = True
+        config.lsl_stream_mode = "standard"
+        config.lsl_gaze_stream_name = f"Test_Lifecycle_{int(time.time())}"
+        config.lsl_marker_stream_name = f"Test_Lifecycle_Markers_{int(time.time())}"
+
+        tracker = Pupilio(config=config)
+        try:
+            yield tracker.lsl_manager
+        finally:
+            tracker.release()
+
+    def test_double_start_does_not_spawn_two_workers(self, manager):
+        manager.start()
+        first = manager.worker_thread
+        manager.start()
+        # Same thread object; the second start is a no-op.
+        assert manager.worker_thread is first
+        manager.stop()
+
+    def test_stop_is_idempotent(self, manager):
+        manager.start()
+        manager.stop()
+        # Stopping twice must not raise, and the worker reference must be
+        # cleared after a successful join.
+        manager.stop()
+        assert manager.worker_thread is None
+
+    def test_is_running_reflects_lifecycle(self, manager):
+        assert manager.is_running is False
+        manager.start()
+        assert manager.is_running is True
+        manager.stop()
+        assert manager.is_running is False
+

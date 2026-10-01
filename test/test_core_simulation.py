@@ -28,7 +28,7 @@ class TestConstruction:
         assert pupil_io.RIGHT_IMG_HEIGHT == int(pupil_io.right_roi[3])
 
     def test_sampling_rate_is_resolved_to_a_supported_value(self, pupil_io):
-        assert pupil_io.config.sampling_rate in pupil_io.query_support_samping_rate()
+        assert pupil_io.config.sampling_rate in pupil_io.query_support_sampling_rate()
 
     def test_calibration_points_match_the_configured_mode(self, simulation_config):
         from pupilio import Pupilio
@@ -58,7 +58,7 @@ class TestConstruction:
 
 class TestCameraMode:
     def test_supported_rates_are_ascending_and_non_empty(self, pupil_io):
-        rates = pupil_io.query_support_samping_rate()
+        rates = pupil_io.query_support_sampling_rate()
 
         assert rates
         assert rates == sorted(rates)
@@ -84,14 +84,14 @@ class TestSessionLifecycle:
 
     @pytest.mark.parametrize("name", ["with space", "with/slash", "with:colon", "with*star", "bad?name"])
     def test_invalid_session_names_are_rejected(self, pupil_io, name):
-        with pytest.raises(Exception, match="invalid"):
+        with pytest.raises(RuntimeError, match="invalid"):
             pupil_io.create_session(name)
 
     @pytest.mark.parametrize("name", ["CON", "PRN", "NUL", "COM1", "LPT1", "com1"])
     def test_windows_reserved_names_are_rejected(self, pupil_io, name):
         # These cannot be used as file names on Windows, and the session name
         # becomes a directory name.
-        with pytest.raises(Exception, match="invalid"):
+        with pytest.raises(RuntimeError, match="invalid"):
             pupil_io.create_session(name)
 
     @pytest.mark.parametrize("name", ["session1", "my_session", "test-run", "run+1", "trial(1)"])
@@ -112,18 +112,19 @@ class TestSampling:
         pupil_io.stop_sampling()
         assert pupil_io.get_sampling_status() is False
 
-    def test_stopping_when_idle_raises(self, pupil_io):
-        # Regression test: the native call dereferences a null sampling thread
-        # here, which crashed the interpreter instead of raising.
-        with pytest.raises(RuntimeError, match="no sampling running"):
-            pupil_io.stop_sampling()
+    def test_stopping_when_idle_is_a_no_op(self, pupil_io):
+        # stop_sampling is idempotent. The native call would dereference a null
+        # sampling thread if we let it through, so the guard still fires — but
+        # it now returns ET_SUCCESS instead of raising, matching start_sampling.
+        assert pupil_io.stop_sampling() == ET_ReturnCode.ET_SUCCESS
 
-    def test_starting_twice_raises(self, pupil_io):
+    def test_starting_twice_is_a_no_op(self, pupil_io):
         pupil_io.create_session("double_start")
         pupil_io.start_sampling()
         try:
-            with pytest.raises(RuntimeError, match="already running"):
-                pupil_io.start_sampling()
+            # Second start is idempotent: returns ET_SUCCESS, no raise.
+            assert pupil_io.start_sampling() == ET_ReturnCode.ET_SUCCESS
+            assert pupil_io.get_sampling_status() is True
         finally:
             pupil_io.stop_sampling()
 
@@ -206,8 +207,10 @@ class TestTrigger:
         with pytest.raises(ValueError, match="between 1 and 65535"):
             pupil_io.set_trigger(trigger)
 
-    @pytest.mark.parametrize("trigger", ["1", 1.5, None])
+    @pytest.mark.parametrize("trigger", ["1", 1.5, None, True, False])
     def test_non_integer_triggers_are_rejected(self, pupil_io, trigger):
+        # bool is a subclass of int in Python; the validator must reject it
+        # explicitly so True doesn't silently become trigger code 1.
         with pytest.raises(TypeError, match="integer"):
             pupil_io.set_trigger(trigger)
 
@@ -223,7 +226,7 @@ class TestDataOutput:
         assert target.exists()
 
     def test_saving_into_a_missing_directory_raises(self, pupil_io, tmp_path):
-        with pytest.raises(Exception, match="not exist"):
+        with pytest.raises(RuntimeError, match="not exist"):
             pupil_io.save_data(str(tmp_path / "missing" / "data.csv"))
 
     def test_clear_cache_returns_a_known_status(self, pupil_io):
@@ -237,31 +240,39 @@ class TestFilterAndPreview:
         assert pupil_io.set_filter_enable(status) in list(ET_ReturnCode)
 
     def test_preview_images_have_the_documented_shape(self, pupil_io):
+        # get_preview_images returns None when the native call fails (e.g. a
+        # dummy DLL that doesn't implement pupil_io_get_previewer). Skip rather
+        # than fail in that case — the shape contract still holds when frames
+        # are available.
         images = pupil_io.get_preview_images()
+        if images is None:
+            pytest.skip("native previewer unavailable in this build")
 
         assert images.shape == (2, 1280, 1280, 3)
         assert images.dtype == np.uint8
 
     def test_previewer_rejects_a_malformed_host(self, pupil_io):
-        with pytest.raises(Exception, match="Invalid IP address"):
+        with pytest.raises(ValueError, match="Invalid IP address"):
             pupil_io.previewer_start("not-an-ip", 5000)
 
 
 class TestDeprecatedApi:
-    def test_subscribe_sample_warns(self, pupil_io):
-        with pytest.warns(DeprecationWarning):
+    def test_subscribe_sample_warns_and_raises(self, pupil_io):
+        # The decorator fires the DeprecationWarning first, then the method
+        # body raises NotImplementedError. Both must happen.
+        with pytest.warns(DeprecationWarning), pytest.raises(NotImplementedError):
             pupil_io.subscribe_sample(lambda sample: None)
 
-    def test_unsubscribe_sample_warns(self, pupil_io):
-        with pytest.warns(DeprecationWarning):
+    def test_unsubscribe_sample_warns_and_raises(self, pupil_io):
+        with pytest.warns(DeprecationWarning), pytest.raises(NotImplementedError):
             pupil_io.unsubscribe_sample(lambda sample: None)
 
-    def test_subscribe_event_warns(self, pupil_io):
-        with pytest.warns(DeprecationWarning):
+    def test_subscribe_event_warns_and_raises(self, pupil_io):
+        with pytest.warns(DeprecationWarning), pytest.raises(NotImplementedError):
             pupil_io.subscribe_event(lambda event: None)
 
-    def test_unsubscribe_event_warns(self, pupil_io):
-        with pytest.warns(DeprecationWarning):
+    def test_unsubscribe_event_warns_and_raises(self, pupil_io):
+        with pytest.warns(DeprecationWarning), pytest.raises(NotImplementedError):
             pupil_io.unsubscribe_event(lambda event: None)
 
     @pytest.mark.parametrize("name", ["sample_subscriber_lock", "sample_subscribers"])
@@ -286,3 +297,4 @@ class TestActiveEyeModes:
             assert tracker.config.active_eye == eye
         finally:
             tracker.release()
+

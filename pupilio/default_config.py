@@ -32,6 +32,7 @@
 # Author: GC Zhu
 # Email: zhugc2016@gmail.com
 # date: 2024/12/13
+# Last updated: 2026/10/01 by Zhiguo Wang
 
 import os
 from pathlib import Path
@@ -64,9 +65,9 @@ class DefaultConfig:
             `cali_mode` (CalibrationMode): Specifies the calibration mode, default is TWO_POINTS.
 
         Kappa Angle Verification:
-            `enable_kappa_verification` (int): Verification of the kappa angle after calibration. Default is 0.
-                                         When this value is 0, the verification of the kappa angle after calibration
-                                         is disabled, suitable for users with strabismus.
+            `enable_kappa_verification` (int): Verification of the kappa angle after calibration.
+                Default is 1 (enabled). When this value is 0, the verification of the kappa
+                angle after calibration is disabled, suitable for users with strabismus.
 
         Debug Settings:
             - `enable_debug_logging` (int): Toggle for enabling debug logging. Disabled by default (0).
@@ -116,9 +117,6 @@ class DefaultConfig:
         # Filter hyperparameters
         self.look_ahead: int = 2  # Look-ahead steps for predicting target position
 
-        # Font settings
-        # self.font_name = "Microsoft YaHei UI Light"  # Font used for displaying text
-
         # Calibration resource file paths
         # calibration instruction wav file
         self.calibration_instruction_sound_path = os.path.join(
@@ -159,7 +157,7 @@ class DefaultConfig:
         # Calibration mode (either 2 or 5)
         self.cali_mode = CalibrationMode.TWO_POINTS  # Default to TWO_POINTS calibration mode
 
-        # Verification of the kappa angle after calibration, default is 0 (verify the estimated kappa angle).
+        # Verification of the kappa angle after calibration. Default is 1 (enabled).
         # When this value is 0, the verification of the kappa angle after calibration
         # is disabled, allowing calibration for users with strabismus.
         self.enable_kappa_verification = 1
@@ -220,7 +218,9 @@ class DefaultConfig:
 
         self._simulation_mode = False
 
-        self._sampling_rate = None
+        # 0 means "auto-select the highest supported rate at init time" — see
+        # Pupilio.__init__ in core.py, which resolves it against HARDWARE_RATES.
+        self._sampling_rate = 0
 
         # LabStreamingLayer (LSL) settings
         self.enable_lsl: bool = False
@@ -234,14 +234,24 @@ class DefaultConfig:
 
     @sampling_rate.setter
     def sampling_rate(self, sampling_rate):
-        support_sampling_rates = [200, 400]
-        if isinstance(sampling_rate, int):
-            if sampling_rate in support_sampling_rates:
-                self._sampling_rate = sampling_rate
-            else:
-                raise Exception(f"Sample rate must be {support_sampling_rates}.")
-        else:
-            raise Exception(f"Sample rate must be an integer and {support_sampling_rates}.")
+        # Reject bool explicitly — True/False are ints in Python.
+        if isinstance(sampling_rate, bool) or not isinstance(sampling_rate, int):
+            raise TypeError(
+                "sampling_rate must be an int: 0 for auto-select, "
+                "or one of [200, 400]."
+            )
+
+        if sampling_rate == 0:
+            # Auto-select; core.py resolves this against HARDWARE_RATES.
+            self._sampling_rate = 0
+            return
+
+        if sampling_rate not in (200, 400):
+            raise ValueError(
+                f"sampling_rate must be 0 (auto) or one of [200, 400], "
+                f"got {sampling_rate}."
+            )
+        self._sampling_rate = sampling_rate
 
     @property
     def cali_mode(self):
@@ -249,6 +259,11 @@ class DefaultConfig:
 
     @cali_mode.setter
     def cali_mode(self, mode):
+        # Reject bool before the ActiveEnum / int checks so True doesn't fall
+        # through to `mode == 1`.
+        if isinstance(mode, bool):
+            raise TypeError("cali_mode must not be a bool.")
+
         if isinstance(mode, CalibrationMode):
             self._cali_mode = mode
         elif mode == 0:
@@ -260,11 +275,13 @@ class DefaultConfig:
         elif mode == 4:
             self._cali_mode = CalibrationMode.FOUR_POINTS
         else:
-            raise ValueError("Invalid calibration mode. Must be 0, 2, 4, 5, or a CalibrationMode instance.")
+            raise ValueError(
+                "Invalid calibration mode. Must be 0, 2, 4, 5, "
+                "or a CalibrationMode instance."
+            )
 
         # Update instructions when mode changes
         self.instruction_language(self._lang)  # Re-generate instructions with new mode
-
 
     @property
     def active_eye(self):
@@ -272,6 +289,10 @@ class DefaultConfig:
 
     @active_eye.setter
     def active_eye(self, mode):
+        # Reject bool — True == 1 in Python and would otherwise select the right eye.
+        if isinstance(mode, bool):
+            raise TypeError("active_eye must not be a bool.")
+
         if isinstance(mode, ActiveEye):
             self._active_eye = mode
         elif mode == -1:
@@ -287,8 +308,10 @@ class DefaultConfig:
         elif mode == "bino":
             self._active_eye = ActiveEye.BINO_EYE
         else:
-            raise ValueError("Invalid tracking mode. Must be 0 (bino), -1 (left eye), "
-                             "1 (right eye), left, right, or bino.")
+            raise ValueError(
+                "Invalid tracking mode. Must be 0 (bino), -1 (left eye), "
+                "1 (right eye), left, right, or bino."
+            )
 
     @property
     def simulation_mode(self):
@@ -297,15 +320,15 @@ class DefaultConfig:
     @simulation_mode.setter
     def simulation_mode(self, value):
         if isinstance(value, bool):
-            pass  # OK
-        elif isinstance(value, int):
-            if value not in (0, 1):
-                raise TypeError(f"simulation_mode must be a bool or 0/1, got {type(value).__name__}")
-            value = bool(value)  # 宽容处理 0/1
+            coerced = value
+        elif isinstance(value, int) and value in (0, 1):
+            coerced = bool(value)  # tolerate 0/1 as documented
         else:
-            raise TypeError(f"simulation_mode must be a bool or 0/1, got {type(value).__name__}")
-
-        self._simulation_mode = value
+            raise TypeError(
+                f"simulation_mode must be a bool or 0/1, "
+                f"got {type(value).__name__}"
+            )
+        self._simulation_mode = coerced
 
     @property
     def lsl_stream_mode(self) -> str:
@@ -319,7 +342,8 @@ class DefaultConfig:
         mode = mode.lower()
         if mode not in ("standard", "full"):
             raise ValueError(
-                f"Invalid lsl_stream_mode '{mode}'. Supported modes are 'standard' (12 channels) and 'full' (39 channels)."
+                f"Invalid lsl_stream_mode '{mode}'. Supported modes are "
+                f"'standard' (12 channels) and 'full' (39 channels)."
             )
         self._lsl_stream_mode = mode
 
@@ -327,37 +351,44 @@ class DefaultConfig:
         """
         Update the instructions and legends based on the specified language.
 
+        Language codes are matched by prefix, so regional variants such as ``en-GB``,
+        ``fr-CA``, or ``es-MX`` are accepted alongside the canonical forms.
+
         Args:
-            lang (str): The language to update to. Supported values are:
-                - 'zh-CN': Updates instructions to Simplified Chinese.
-                - 'zh-HK': Updates instructions to Traditional Chinese.
-                - 'en-US': Updates instructions to English.
-                - 'fr-FR': Updates instructions to French.
-                - 'es-ES': Updates instructions to Spanish.
-                - 'jp-JP': Updates instructions to Japanese.
-                - 'ko-KR': Updates instructions to Korean.
+            lang (str): The language to update to. Supported prefixes are:
+                - 'zh-CN', 'zh-SG': Simplified Chinese
+                - 'zh-HK', 'zh-TW', 'zh-MO': Traditional Chinese
+                - 'en-*': English
+                - 'fr-*': French
+                - 'es-*': Spanish
+                - 'jp-*' or 'ja-*': Japanese
+                - 'ko-*': Korean
 
         Raises:
-            ValueError: If an unsupported language is specified.
+            ValueError: If an unsupported language is specified. ``self._lang`` is not
+                modified in that case, so the previous language stays in effect.
         """
-
-        self._lang = lang
-        if lang in ['zh-CN', 'zh-SG']:
-            self.simplified_chinese()
-        elif lang in ['zh-HK', 'zh-TW', 'zh-MO']:
-            self.traditional_chinese()
-        elif 'en-' in lang:
-            self.english()
-        elif 'fr' in lang:
-            self.french()
-        elif lang == 'es-ES':
-            self.spanish()
-        elif lang == "jp-JP":
-            self.japanese()
-        elif lang == "ko-KR":
-            self.korean()
+        # Resolve the handler first so an invalid lang doesn't leave _lang pointing
+        # at a code we don't support.
+        if lang in ('zh-CN', 'zh-SG'):
+            handler = self.simplified_chinese
+        elif lang in ('zh-HK', 'zh-TW', 'zh-MO'):
+            handler = self.traditional_chinese
+        elif lang.startswith('en'):
+            handler = self.english
+        elif lang.startswith('fr'):
+            handler = self.french
+        elif lang.startswith('es'):
+            handler = self.spanish
+        elif lang.startswith('jp') or lang.startswith('ja'):
+            handler = self.japanese
+        elif lang.startswith('ko'):
+            handler = self.korean
         else:
             raise ValueError(f"Unsupported language: {lang}")
+
+        self._lang = lang
+        handler()
 
     def simplified_chinese(self):
         """
