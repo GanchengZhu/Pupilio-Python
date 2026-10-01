@@ -218,8 +218,8 @@ for _img in images:
         left, right, bino = pupil_io.get_current_gaze()
         status, gx, gy = bino
         # convert to psychopy coordinates, screen center = (0,0)
-        gx = gx -960
-        gy = 540 - gy
+        gx = gx - (scn_width  / 2)
+        gy = (scn_height / 2) - gy
 
         # check keyboard events
         if event.getKeys():
