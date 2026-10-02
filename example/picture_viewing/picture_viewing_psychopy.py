@@ -66,7 +66,7 @@ pupil_io = Pupilio(config)
 pupil_io.create_session(session_name="deepgaze_demo")
 
 # ---- Calibrate ----
-pupil_io.calibration_draw(validate=False, hands_free=False, screen=win)
+pupil_io.calibration_draw(validate=True, hands_free=False, screen=win)
 
 # ---- Start retrieving gaze data ----
 pupil_io.start_sampling()
