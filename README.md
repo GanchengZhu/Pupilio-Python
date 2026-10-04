@@ -34,10 +34,10 @@
 | Psychology Experiment Software | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox                  |
 | Research Support               | No                    | Yes                   | Yes                                    |
 
-<sup>1</sup> DVS-2K edition available in Q4 2026. Final specifications subject to changes.<br>
-<sup>2</sup> Measured with fake eyes, with the filter turned off. <br>
-<sup>3</sup> Measured with an industrial gold standard eye-tracker that operated at 2000 Hz.<br>
-<sup>4</sup> Effective camera FOV when both eyes are reliably tracked at 70 cm camera-to-eye distance.
+<sup>1</sup> DVS-2K edition available in Q4 2026. Final specifications subject to change.<br>
+<sup>2</sup> Measured using artificial eyes with the filter disabled.<br>
+<sup>3</sup> Measured against a industry-standard eye-tracker operating at 2000 Hz.<br>
+<sup>4</sup> Effective camera field of view (FOV) when both eyes are reliably tracked at a camera-to-eye distance of 70 cm.
 
 ## Installation
 
