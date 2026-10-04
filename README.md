@@ -25,7 +25,7 @@
 |:-------------------------------|:----------------------|:----------------------|:---------------------------------------|
 | Sampling Rate                  | 200 Hz                | 400 Hz                | 2000 Hz                                |
 | Tracking Accuracy              | 0.5-1.0 deg           | 0.3-0.8 deg           | 0.3-0.8 deg                            |
-| Spatial Resolution<sup>2</sup> | 0.05 deg              | 0.08 deg              | 0.02 deg                               |
+| Spatial Resolution<sup>2</sup> | 0.01 deg              | 0.04 deg              | 0.02 deg                               |
 | System Latency<sup>3</sup>     | 12.16 ms / SD = 1.22  | 4.91 ms / SD = 1.42   | 2.5 ms                                 |
 | Tracking Algorithm             | Neural Network        | Neural Network        | Neural Network                         |
 | Development Support            | C++/Python/Matlab     | C++/Python/Matlab     | C++/Python/Matlab                      |
@@ -35,7 +35,7 @@
 | Research Support               | No                    | Yes                   | Yes                                    |
 
 <sup>1</sup> DVS-2K edition available in Q4 2026. Final specifications subject to product manual.<br>
-<sup>2</sup> Measured with fake eyes. <br>
+<sup>2</sup> Measured with fake eyes; heuristic filtered turned off. <br>
 <sup>3</sup> Measured with an industrial gold standard eye-tracker that operated at 2000 Hz.<br>
 <sup>4</sup> Effective camera FOV when both eyes are reliably tracked at 70 cm camera-to-eye distance.
 
