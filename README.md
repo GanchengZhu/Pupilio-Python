@@ -21,20 +21,20 @@
 - **Intuitive Workflow**: Simplified calibration, validation, and recording with minimal setup.
 
 ### Specifications
-| Specifications | AIO (Commercial)      | PRO (Research) | DVS-2K\*\* (Premiere Research) |
-| :--- |:----------------------| :--- | :--- |
-| Sampling Rate | 200 Hz                | 400 Hz | 2000 Hz |
-| Tracking Accuracy | 0.5-1.0 deg           | 0.3-0.8 deg | 0.3-0.8 deg |
-| Spatial Resolution | 0.05 deg              | 0.08 deg | 0.02 deg |
-| System Latency | 25 ms                 | 12 ms | 5 ms |
-| Tracking Algorithm | Neural Network        | Neural Network | Neural Network |
-| Development Support | C++/Python/Matlab     | C++/Python/Matlab | C++/Python/Matlab |
-| Operating System | Windows 11            | Windows 11 | Windows 11 |
-| Head Box | 40x40cm @ 70cm        | 40x40cm @ 70cm | 40x40cm @ 70cm |
-| Psychology Experiment Software | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox |
-| Research Support | No                    | Yes | Yes |
+| Specifications                 | AIO (Commercial)      | PRO (Research)        | DVS-2K\* (Premiere Research) |
+|:-------------------------------|:----------------------|:----------------------|:-------------------------------|
+| Sampling Rate                  | 200 Hz                | 400 Hz                | 2000 Hz                        |
+| Tracking Accuracy              | 0.5-1.0 deg           | 0.3-0.8 deg           | 0.3-0.8 deg                    |
+| Spatial Resolution             | 0.05 deg              | 0.08 deg              | 0.02 deg                       |
+| System Latency                 | 12.5 ms               | 5 ms                  | 2.5 ms                         |
+| Tracking Algorithm             | Neural Network        | Neural Network        | Neural Network                 |
+| Development Support            | C++/Python/Matlab     | C++/Python/Matlab     | C++/Python/Matlab              |
+| Operating System               | Windows 11            | Windows 11            | Windows 11                     |
+| Head Box\*\*                   | 28 x 28 cm @ 70cm     | 25 x 14 cm @ 70cm     | -                              |
+| Psychology Experiment Software | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox          |
+| Research Support               | No                    | Yes                   | Yes                            |
 
-\*\* DVS-2K edition available in Q4 2026. Final specifications subject to product manual.
+\* DVS-2K edition available in Q4 2026. Final specifications subject to product manual. \*\* Effective camera FOV when both eyes are reliably tracked at 70 cm camera-to-eye distance.
 
 ## Installation
 
