@@ -30,7 +30,7 @@
 | Tracking Algorithm             | Neural Network        | Neural Network        | Neural Network                         |
 | Development Support            | C++/Python/Matlab     | C++/Python/Matlab     | C++/Python/Matlab                      |
 | Operating System               | Windows 11            | Windows 11            | Windows 11                             |
-| Head Box<sup>4</sup>           | 28 x 28 cm @ 70cm     | 26 x 13 cm @ 70cm     | -                                      |
+| Head Box<sup>4</sup>           | 28 x 28 cm @ 70cm     | 27 x 12 cm @ 70cm     | -                                      |
 | Psychology Experiment Software | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox                  |
 | Research Support               | No                    | Yes                   | Yes                                    |
 
