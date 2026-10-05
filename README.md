@@ -23,21 +23,21 @@
 ### Specifications
 | Specifications                 | AIO (Commercial)      | PRO (Research)        | DVS-2K<sup>1</sup> (Premiere Research) |
 |:-------------------------------|:----------------------|:----------------------|:---------------------------------------|
-| Sampling Rate                  | 200 Hz                | 400 Hz                | 2000 Hz                                |
+| Sampling Rate                  | 200 Hz                | 200 Hz / 400 Hz       | 2000 Hz                                |
 | Tracking Accuracy              | 0.5-1.0 deg           | 0.3-0.8 deg           | 0.3-0.8 deg                            |
 | Spatial Resolution<sup>2</sup> | 0.01 deg              | 0.04 deg              | 0.02 deg                               |
 | System Latency<sup>3</sup>     | 12.16 ms / SD = 1.22  | 4.91 ms / SD = 1.42   | 2.5 ms                                 |
 | Tracking Algorithm             | Neural Network        | Neural Network        | Neural Network                         |
 | Development Support            | C++/Python/Matlab     | C++/Python/Matlab     | C++/Python/Matlab                      |
 | Operating System               | Windows 11            | Windows 11            | Windows 11                             |
-| Head Box<sup>4</sup>           | 28 x 28 cm @ 70cm     | 27 x 12 cm @ 70cm     | -                                      |
+| Head Box<sup>4</sup>           | 28 x 28 cm @ 70 cm    | 28 x 28 cm @ 70 cm    | -                                      |
 | Psychology Experiment Software | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox                  |
 | Research Support               | No                    | Yes                   | Yes                                    |
 
 <sup>1</sup> DVS-2K edition available in Q4 2026. Final specifications subject to change.<br>
 <sup>2</sup> S2S-RMS, measured using artificial eyes with the filter disabled.<br>
 <sup>3</sup> Measured against a industry-standard eye-tracker operating at 2000 Hz.<br>
-<sup>4</sup> Effective camera field of view (FOV) when both eyes are reliably tracked at a camera-to-eye distance of 70 cm.
+<sup>4</sup> When both eyes are reliably tracked at a camera-to-eye distance of 70 cm, when operating at 200 Hz.
 
 ## Installation
 
