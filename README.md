@@ -36,7 +36,7 @@
 
 <sup>1</sup> DVS-2K edition available in Q4 2026. Final specifications subject to change.<br>
 <sup>2</sup> S2S-RMS, measured using artificial eyes with the filter disabled.<br>
-<sup>3</sup> Measured against a industry-standard eye-tracker operating at 2000 Hz.<br>
+<sup>3</sup> Measured against an industry-standard eye-tracker operating at 2000 Hz.<br>
 <sup>4</sup> When operating at 200 Hz and both eyes are reliably tracked at a camera-to-eye distance of 70 cm.
 
 ## Installation
