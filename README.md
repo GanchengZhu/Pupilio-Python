@@ -38,6 +38,7 @@
 | Head Box⁴                      | 28 x 28 cm @ 70 cm    | 28 x 28 cm @ 70 cm    | -                           |
 | Psychology Experiment Software | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox       |
 | Research Support               | No                    | Yes                   | Yes                         |
+
 <sup>1</sup> DVS-2K edition available in Q4 2026. Final specifications subject to change.<br>
 <sup>2</sup> S2S-RMS, measured using artificial eyes with the filter disabled.<br>
 <sup>3</sup> Measured against an industry-standard eye-tracker operating at 2000 Hz.<br>
