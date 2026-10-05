@@ -25,19 +25,19 @@
 - **Intuitive Workflow**: Simplified calibration, validation, and recording with minimal setup.
 
 ### Specifications
-| Specifications                 | AIO <br/>(Commercial)      | PRO<br/>(Research)         | DVS-2K¹<br/>(Premiere Research) |
-|:-------------------------------|:----------------------|:----------------------|:---------------------------|
-| Sampling Rate                  | 200 Hz                | 200 Hz / 400 Hz       | 2000 Hz                    |
-| Tracking Accuracy              | 0.5-1.0 deg           | 0.3-0.8 deg           | 0.3-0.8 deg                |
-| Spatial Precision²             | 0.01 deg              | 0.04 deg              | 0.02 deg                   |
-| System Latency³                | 12.16 ms / SD = 1.22  | 4.91 ms / SD = 1.42   | 2.5 ms                     |
-| Tracking Algorithm             | Neural Network        | Neural Network        | Neural Network             |
-| Development Support            | C++/Python/Matlab     | C++/Python/Matlab     | C++/Python/Matlab          |
-| Operating System               | Windows 11            | Windows 11            | Windows 11                 |
-| Head Support                   | No                    | No                    | Yes                        |
-| Head Box⁴                      | 28 x 28 cm @ 70 cm    | 28 x 28 cm @ 70 cm    | -                          |
-| Psychology Experiment Software | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox      |
-| Research Support               | No                    | Yes                   | Yes                        |
+| Specifications                 | AIO <br/>(Commercial Use) | PRO<br/>(Research)         | DVS-2K¹<br/>(Premier Research) |
+|:-------------------------------|:--------------------------|:----------------------|:-------------------------------|
+| Sampling Rate                  | 200 Hz                    | 200 Hz / 400 Hz       | 2000 Hz                        |
+| Tracking Accuracy              | 0.5-1.0 deg               | 0.3-0.8 deg           | 0.3-0.8 deg                    |
+| Spatial Precision²             | 0.01 deg                  | 0.04 deg              | 0.02 deg                       |
+| System Latency³                | 12.16 ms / SD = 1.22      | 4.91 ms / SD = 1.42   | 2.5 ms                         |
+| Tracking Algorithm             | Neural Network            | Neural Network        | Neural Network                 |
+| Development Support            | C++/Python/Matlab         | C++/Python/Matlab     | C++/Python/Matlab              |
+| Operating System               | Windows 11                | Windows 11            | Windows 11                     |
+| Head Support                   | No                        | No                    | Yes                            |
+| Head Box⁴                      | 28 x 28 cm @ 70 cm        | 28 x 28 cm @ 70 cm    | -                              |
+| Psychology Experiment Software | PsychoPy/PsychToolBox     | PsychoPy/PsychToolBox | PsychoPy/PsychToolBox          |
+| Research Support               | No                        | Yes                   | Yes                            |
 
 <sup>1</sup> DVS-2K edition available in Q4 2026. Final specifications subject to change.<br>
 <sup>2</sup> S2S-RMS, measured using artificial eyes with the filter disabled.<br>
