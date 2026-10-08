@@ -62,7 +62,10 @@ class DefaultConfig:
             `cali_target_animation_frequency` (int): Frequency of the calibration target animation (in Hz).
 
         Calibration Mode:
-            `cali_mode` (CalibrationMode): Specifies the calibration mode, default is TWO_POINTS.
+            `cali_mode` (CalibrationMode): Specifies the calibration mode.
+                Supported: NO_CALI, TWO_POINTS, FIVE_POINTS, NINE_POINTS.
+                FOUR_POINTS is deprecated and will be treated as FIVE_POINTS.
+                Default is TWO_POINTS.
 
         Kappa Angle Verification:
             `enable_kappa_verification` (int): Verification of the kappa angle after calibration.
@@ -154,8 +157,8 @@ class DefaultConfig:
         # Calibration target animation frequency
         self.cali_target_animation_frequency = 3  # Frequency of the calibration target animation (in Hz)
 
-        # Calibration mode (either 2 or 5)
-        self.cali_mode = CalibrationMode.TWO_POINTS  # Default to TWO_POINTS calibration mode
+        # Calibration mode (0, 2, 5, or 9; 4 is deprecated -> 5), 0 = NO_CALI, skip calibration
+        self.cali_mode = CalibrationMode.TWO_POINTS
 
         # Verification of the kappa angle after calibration. Default is 1 (enabled).
         # When this value is 0, the verification of the kappa angle after calibration
@@ -258,6 +261,11 @@ class DefaultConfig:
         return self._cali_mode
 
     @cali_mode.setter
+    @property
+    def cali_mode(self):
+        return self._cali_mode
+
+    @cali_mode.setter
     def cali_mode(self, mode):
         # Reject bool before the ActiveEnum / int checks so True doesn't fall
         # through to `mode == 1`.
@@ -265,19 +273,29 @@ class DefaultConfig:
             raise TypeError("cali_mode must not be a bool.")
 
         if isinstance(mode, CalibrationMode):
-            self._cali_mode = mode
+            if mode == CalibrationMode.FOUR_POINTS:
+                print("Warning: 4-point calibration is deprecated. "
+                      "Using 5-point calibration instead.")
+                self._cali_mode = CalibrationMode.FIVE_POINTS
+            else:
+                self._cali_mode = mode
         elif mode == 0:
             self._cali_mode = CalibrationMode.NO_CALI
         elif mode == 2:
             self._cali_mode = CalibrationMode.TWO_POINTS
+        elif mode == 4:
+            print("Warning: 4-point calibration is deprecated. "
+                  "Using 5-point calibration instead.")
+            self._cali_mode = CalibrationMode.FIVE_POINTS
         elif mode == 5:
             self._cali_mode = CalibrationMode.FIVE_POINTS
-        elif mode == 4:
-            self._cali_mode = CalibrationMode.FOUR_POINTS
+        elif mode == 9:
+            self._cali_mode = CalibrationMode.NINE_POINTS
         else:
             raise ValueError(
-                "Invalid calibration mode. Must be 0, 2, 4, 5, "
-                "or a CalibrationMode instance."
+                "Invalid calibration mode. Must be 0, 2, 5, 9, "
+                "or a CalibrationMode instance. "
+                "(4 is deprecated and will be treated as 5.)"
             )
 
         # Update instructions when mode changes
@@ -400,7 +418,7 @@ class DefaultConfig:
         self.instruction_head_center = "请将头移动到方框中央"
 
         # Calibration entry instructions
-        points = {2: "两", 4: "四", 5: "五"}.get(self.cali_mode, "几")
+        points = {2: "两", 5: "五", 9: "九"}.get(self.cali_mode, "几")
         self.instruction_enter_calibration = f"屏幕上会出现{points}个点，请依次注视这些点\n" \
                                              "按回车键或鼠标左键(或触击屏幕)开始校准"
 
@@ -441,7 +459,7 @@ class DefaultConfig:
         self.instruction_head_center = "Move your head to the center of the box"
 
         # Calibration entry instructions
-        points = {2: "Two", 4: "Four", 5: "Five"}.get(self.cali_mode, "Several")
+        points = {2: "Two", 5: "Five", 9: "Nine"}.get(self.cali_mode, "Several")
         self.instruction_enter_calibration = f"{points} points will appear on screen, please look at them in sequence\n" \
                                              "Press Enter or left-click the mouse (or touch the screen) to start calibration"
 
@@ -482,7 +500,7 @@ class DefaultConfig:
         self.instruction_head_center = "Veuillez centrer votre tête dans l'image"
 
         # Calibration entry instructions
-        points = {2: "Deux", 4: "Quatre", 5: "Cinq"}.get(self.cali_mode, "Plusieurs")
+        points = {2: "Deux", 5: "Cinq", 9: "Neuf"}.get(self.cali_mode, "Plusieurs")
         self.instruction_enter_calibration = f"{points} points apparaîtront à l'écran, veuillez les regarder dans l'ordre\n" \
                                              "Appuyez sur Entrée ou cliquez à gauche (cliquez sur l'écran) pour commencer l'étalonnage"
 
@@ -523,7 +541,7 @@ class DefaultConfig:
         self.instruction_head_center = "Por favor, centre su cabeza en la pantalla"
 
         # Calibration entry instructions
-        points = {2: "dos", 4: "cuatro", 5: "cinco"}.get(self.cali_mode, "varios")
+        points = {2: "dos", 5: "cinco", 9: "nueve"}.get(self.cali_mode, "varios")
         self.instruction_enter_calibration = \
             (f"Aparecerán {points} puntos en la pantalla, por favor mírelos en orden\n"
              "Presione Enter o haga clic con el botón izquierdo "
@@ -566,7 +584,7 @@ class DefaultConfig:
         self.instruction_head_center = "請將頭移到畫面中央"
 
         # Calibration entry instructions
-        points = {2: "兩", 4: "四", 5: "五"}.get(self.cali_mode, "幾")
+        points = {2: "兩", 5: "五", 9: "九"}.get(self.cali_mode, "幾")
         self.instruction_enter_calibration = f"畫面上會出現{points}個點，請按順序注視這些點\n" \
                                              "按下回車鍵或鼠標左鍵(點擊螢幕)開始校準"
 
@@ -607,7 +625,7 @@ class DefaultConfig:
         self.instruction_head_center = "画面の中央に頭を移動してください"
 
         # Calibration entry instructions
-        points = {2: "2", 4: "4", 5: "5"}.get(self.cali_mode, "いくつか")
+        points = {2: "2", 5: "5", 9: "9"}.get(self.cali_mode, "いくつか")
         self.instruction_enter_calibration = f"画面に{points}つの点が表示されますので、その順番で注視してください\n" \
                                              "Enterキーまたは左クリック（画面をクリック）でキャリブレーションを開始します"
         self.instruction_hands_free_calibration = (
@@ -647,7 +665,7 @@ class DefaultConfig:
         self.instruction_head_center = "화면 중앙에 머리를 위치시켜 주세요"
 
         # Calibration entry instructions
-        points = {2: "두", 4: "네", 5: "다섯"}.get(self.cali_mode, "여러")
+        points = {2: "두", 5: "다섯", 9: "아홉"}.get(self.cali_mode, "여러")
         self.instruction_enter_calibration = f"화면에 {points} 개의 점이 나타나면 순서대로 주시하세요\n" \
                                              "Enter 키 또는 왼쪽 클릭(화면 클릭)으로 교정 시작"
 

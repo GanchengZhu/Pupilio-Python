@@ -86,11 +86,11 @@ class ET_ReturnCode(IntEnum):
 
 
 class CalibrationMode(IntEnum):
-    """Enum representing calibration modes"""
     NO_CALI = 0
     TWO_POINTS = 2
-    FOUR_POINTS = 4
+    FOUR_POINTS = 4   # keep for backward compatibility, but deprecate
     FIVE_POINTS = 5
+    NINE_POINTS = 9
 
 
 class CameraMode(IntEnum):
