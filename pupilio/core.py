@@ -1079,12 +1079,34 @@ class Pupilio:
     # ------------------------------------------------------------------ #
     # Calibration UI                                                     #
     # ------------------------------------------------------------------ #
-
-    def calibration_draw(self, screen=None, validate=False, bg_color=(255, 255, 255), hands_free=False):
+    def calibration_draw(self, screen=None, validate=False, bg_color=(255, 255, 255),
+                         hands_free=False, skip_pos_adjust=False):
         """
         Run the full calibration routine on screen.
 
-        ... (original docstring preserved) ...
+        Chooses a UI backend from the ``screen`` argument (Pygame if it looks like a
+        pygame surface, PsychoPy otherwise, or creates a Pygame full-screen window when
+        ``screen`` is None), builds a :class:`~pupilio.cali_graphics.CalibrationUI`, and
+        blocks until the routine finishes.
+
+        If the participant presses ESC while a real calibration mode is active, the
+        routine switches to no-calibration mode via
+        :meth:`set_calibration_mode(0)` and re-runs so the session can proceed with the
+        tracker's default results.
+
+        Args:
+            screen (optional): A Pygame surface or PsychoPy window to draw into. When
+                None, a Pygame full-screen 1920x1080 window is created.
+            validate (bool): Whether to run validation and show the accuracy report.
+                Forced to False when ``config.cali_mode == 0``.
+            bg_color (tuple): Background colour as RGB 0-255.
+            hands_free (bool): When True, phases advance on timers rather than waiting
+                for participant input.
+            skip_face_previewing (bool): When True, do not draw the camera preview even
+                if ``config.face_previewing`` is enabled.
+
+        Raises:
+            RuntimeError: If ``screen`` is None and a Pygame window cannot be created.
         """
         screen_type = ""
         if screen is None:
@@ -1092,7 +1114,9 @@ class Pupilio:
                 import pygame
                 pygame.init()
                 scn_width, scn_height = (1920, 1080)
-                screen = pygame.display.set_mode((scn_width, scn_height), pygame.FULLSCREEN | pygame.HWSURFACE)
+                screen = pygame.display.set_mode(
+                    (scn_width, scn_height), pygame.FULLSCREEN | pygame.HWSURFACE
+                )
                 screen_type = 'pygame'
             except Exception as e:
                 logger.error(f"Cannot fallback to pygame screen creation: {e}")
@@ -1114,9 +1138,9 @@ class Pupilio:
 
         ui = CalibrationUI(pupil_io=self, ui_backend=ui_backend)
 
-        # FIX: removed the commented-out duplicate branch
         if not hands_free:
-            ui.draw(validate=validate, bg_color=bg_color)
+            ui.draw(validate=validate, bg_color=bg_color,
+                    skip_pos_adjust=skip_pos_adjust)
         else:
             ui.draw_hands_free(validate=validate, bg_color=bg_color)
 
@@ -1131,6 +1155,7 @@ class Pupilio:
                 self.stop_sampling()
         except Exception as exc:
             logger.warning(f"[PupilioET] Failed to stop leftover sampling: {exc}")
+
 
     # ------------------------------------------------------------------ #
     # Deprecated subscription API                                        #
@@ -1526,4 +1551,41 @@ class Pupilio:
         blended = roi_f * (1.0 - alpha3) + face_f * alpha3
         np.clip(blended, 0, 255, out=blended)
         roi[:] = blended.astype(np.uint8)
+
+
+    def set_calibration_mode(self, mode, points=None) -> int:
+        """
+        Push a new calibration mode to the native library without releasing the
+        tracker. Returns the native return code.
+
+        Args:
+            mode (int): A CalibrationMode value.
+            points (np.ndarray, optional): 1-D float32 array of calibration point
+                coordinates, length 2*N. If None, a correctly sized zero array is
+                allocated for the given mode.
+
+        Returns:
+            int: An ET_ReturnCode value; ET_SUCCESS on success.
+        """
+        if points is None:
+            if mode == CalibrationMode.TWO_POINTS:
+                points = np.zeros(2 * 2, dtype=np.float32)
+            elif mode == CalibrationMode.FIVE_POINTS:
+                points = np.zeros(2 * 5, dtype=np.float32)
+            elif mode == CalibrationMode.FOUR_POINTS:
+                points = np.zeros(2 * 4, dtype=np.float32)
+            else:
+                points = np.zeros(2 * 2, dtype=np.float32)
+        else:
+            points = np.ascontiguousarray(points, dtype=np.float32).ravel()
+
+        ret = self._et_native_lib.pupil_io_set_cali_mode(mode, points)
+        if ret != ET_ReturnCode.ET_SUCCESS.value:
+            logger.warning(f"pupil_io_set_cali_mode({mode}) returned {ret}")
+            return ret
+
+        self.config.cali_mode = mode
+        self.calibration_points = np.reshape(points, (-1, 2))
+        logger.info(f"Calibration mode set to {mode} (no reinit).")
+        return ret
 
