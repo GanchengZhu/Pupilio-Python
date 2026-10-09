@@ -59,8 +59,8 @@ font = pygame.font.SysFont("Arial", 48, bold=True)
 config = DefaultConfig()
 config.face_previewing = 1          # show face preview during calibration
 config.look_ahead = 2               # heuristic filter (4 flanking samples)
-config.sampling_rate = 400          # 200 Hz (falls back to 200 on 200 Hz models)
-config.cali_mode = 2                # 5-point calibration
+config.sampling_rate = 200          # 200 Hz (falls back to 200 on 200 Hz models)
+config.cali_mode = 9                # 5-point calibration
 config.simulation_mode = 0          # 0 = hardware, 1 = simulation on any PC
 
 # ---- Instantiate tracker and create a session ----
