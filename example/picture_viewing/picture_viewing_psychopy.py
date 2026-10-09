@@ -145,7 +145,7 @@ for _img in images:
 core.wait(0.1)  # capture trailing samples
 pupil_io.stop_sampling()
 
-data_dir = "./data"
+data_dir = "../event_detection/data"
 if not os.path.exists(data_dir):
     os.makedirs(data_dir)
 pupil_io.save_data(os.path.join(data_dir, "deepgaze_demo.csv"))

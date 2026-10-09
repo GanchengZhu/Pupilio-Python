@@ -60,7 +60,7 @@ config = DefaultConfig()
 config.face_previewing = 1          # show face preview during calibration
 config.look_ahead = 2               # heuristic filter (4 flanking samples)
 config.sampling_rate = 400          # 200 Hz (falls back to 200 on 200 Hz models)
-config.cali_mode = 2                # 5-point calibration
+config.cali_mode = 5                # 5-point calibration
 config.simulation_mode = 0          # 0 = hardware, 1 = simulation on any PC
 
 # ---- Instantiate tracker and create a session ----
@@ -146,7 +146,7 @@ for _img in images:
 pygame.time.wait(100)  # capture trailing samples
 pupil_io.stop_sampling()
 
-data_dir = "./data"
+data_dir = "data"
 if not os.path.exists(data_dir):
     os.makedirs(data_dir)
 pupil_io.save_data(os.path.join(data_dir, "deepgaze_demo.csv"))
