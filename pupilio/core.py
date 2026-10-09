@@ -120,7 +120,7 @@ class Pupilio:
             )
 
         # initialize get_camera_mode return value
-        self._camera_mode = None
+        self._camera_mode = CameraMode.CAMERA_MODE_SYNC_200
         self.left_roi = None
         self.right_roi = None
         self._is_initialized = False
@@ -1039,6 +1039,11 @@ class Pupilio:
     # ------------------------------------------------------------------ #
     # Properties                                                         #
     # ------------------------------------------------------------------ #
+
+    @property
+    def camera_mode(self):
+        """Public read-only access to the current camera mode."""
+        return self._camera_mode
 
     @property
     def is_initialized(self) -> bool:

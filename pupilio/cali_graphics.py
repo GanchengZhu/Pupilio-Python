@@ -291,8 +291,9 @@ class CalibrationUI:
         # this works for the 400 hz ROI
         face_px_x = SCREEN_CENTER_X + (_face_position[0] - 172.08 + face_x_offset) * SCALE_X
         y_offset = 110.0 if self._pupil_io.config.sampling_rate == 200 else 130.0
-        if self._pupil_io._camera_mode == CameraMode.CAMERA_MODE_SYNC_200:
+        if self._pupil_io.camera_mode == CameraMode.CAMERA_MODE_SYNC_200:
             y_offset = 80
+
         # y_offset = 80.0 if self._pupil_io.config.sampling_rate == 200 else 60.0
         face_px_y = SCREEN_CENTER_Y + (_face_position[1] - y_offset) * SCALE_Y
 
