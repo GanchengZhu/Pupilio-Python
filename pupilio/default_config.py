@@ -261,11 +261,6 @@ class DefaultConfig:
         return self._cali_mode
 
     @cali_mode.setter
-    @property
-    def cali_mode(self):
-        return self._cali_mode
-
-    @cali_mode.setter
     def cali_mode(self, mode):
         # Reject bool before the ActiveEnum / int checks so True doesn't fall
         # through to `mode == 1`.
