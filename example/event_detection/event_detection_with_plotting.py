@@ -7,26 +7,6 @@
 # Redistribution and use in source and binary forms, with or without
 # modification, are NOT permitted.
 #
-# Redistributions in binary form must reproduce the above copyright
-# notice, this list of conditions and the following disclaimer in
-# the documentation and/or other materials provided with the distribution.
-#
-# Neither name of Hangzhou Deep Gaze Sci & Tech Ltd nor the name of
-# contributors may be used to endorse or promote products derived from
-# this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ``AS
-# IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
-# TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
-# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR
-# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-# PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-# LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-# NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
 # DESCRIPTION:
 # Eye movement data analysis script.
 # This script processes eye tracking data files by:
@@ -55,21 +35,21 @@ output_dir = 'output'
 
 # Which eye to detect and plot.
 # Supported values here: 'left' or 'right'.
-# The plot columns follow the pattern
-#   '{which_eye}_eye_gaze_position_x' / '_y' / '_valid',
-# so 'both' would need different column names and is not handled here.
 which_eye = 'right'
 
 # Column name for the gaze timestamp in the raw CSV.
-# Change this if your recording uses a different column name.
 timestamp_col = 'timestamp'
 
 # Gaze timestamps in the raw CSV are stored in nanoseconds.
-# They are converted to seconds for plotting.
 NS_PER_S = 1e9
 
-# Set to False to run the batch without pop-up windows (useful for
-# unattended processing of many files).
+# Screen height in pixels. Used to clamp the y-axis so that off-screen
+# gaze samples (which the tracker can legitimately report) don't stretch
+# the plot and flatten the on-screen signal.
+SCREEN_HEIGHT = 1920
+Y_MARGIN = 300            # allowed overshoot above/below the screen edges
+
+# Set to False to run the batch without pop-up windows.
 show_plots = True
 
 
@@ -82,10 +62,8 @@ def process_file(ed, input_path, output_dir, which_eye,
     """
     print(f"\nProcessing: {input_path}")
 
-    # Base filename without extension, used to name the outputs.
     base_filename = os.path.splitext(os.path.basename(input_path))[0]
 
-    # Column names for the chosen eye.
     x_col = f'{which_eye}_eye_gaze_position_x'
     y_col = f'{which_eye}_eye_gaze_position_y'
     valid_col = f'{which_eye}_eye_valid'
@@ -103,8 +81,6 @@ def process_file(ed, input_path, output_dir, which_eye,
         return False
 
     # ---- Run eye movement event detection ----
-    # This generates BLK_ (blinks), FIX_ (fixations) and SAC_ (saccades)
-    # files in the output directory.
     ed.detect(input_path, output_dir=output_dir, which_eye=which_eye)
 
     # ---- Load saccade results ----
@@ -117,7 +93,6 @@ def process_file(ed, input_path, output_dir, which_eye,
     print(f"  Detected {len(saccades)} saccades")
 
     # ---- Prepare gaze data for plotting ----
-    # Convert timestamps from nanoseconds to seconds.
     time_s = raw_data[timestamp_col] / ns_per_s
 
     # Replace invalid gaze positions with NaN so matplotlib breaks the
@@ -129,7 +104,6 @@ def process_file(ed, input_path, output_dir, which_eye,
     # ---- Create the visualization ----
     fig, ax = plt.subplots(figsize=(14, 6))
 
-    # Gaze X and Y over time on the same axes.
     ax.plot(time_s, raw_full[x_col],
             color='#0072BD', linewidth=2.8, alpha=0.9,
             label='Gaze X', zorder=3)
@@ -141,22 +115,21 @@ def process_file(ed, input_path, output_dir, which_eye,
     ax.set_xlabel('Time (s)', fontsize=12)
     ax.grid(alpha=0.3)
 
+    # ---- Clamp the y-axis to the screen bounds plus a margin ----
+    # The tracker can report gaze well outside the display (extrapolation
+    # during head motion, tracking glitches, etc.). Without this clamp,
+    # those outliers dominate the y-range and squash the on-screen signal
+    # into a flat line. Samples outside the clamp are still drawn, just
+    # clipped at the axes edge — the axis limits do not filter the data.
+    ax.set_ylim(-Y_MARGIN, SCREEN_HEIGHT + Y_MARGIN)
+
     # ---- Highlight saccade periods with shaded vertical strips ----
-    # onset_i and offset_i are sample indices into the raw data. They are
-    # looked up in the time_s series to obtain the corresponding times in
-    # seconds, so the strips align with the x-axis. zorder=2 keeps the
-    # strips behind the gaze traces (zorder=3) so the traces stay visible.
-    #
-    # A flag is used instead of "idx == 0" so the legend entry is still
-    # created if the first saccade happens to be skipped for
-    # out-of-range indices.
     saccade_label_added = False
 
     for saccade_number, (_, saccade) in enumerate(saccades.iterrows(), start=1):
         onset_i = int(saccade['onset_i'])
         offset_i = int(saccade['offset_i'])
 
-        # Guard against out-of-range indices in case of a corrupt file.
         if not (0 <= onset_i < len(time_s) and 0 <= offset_i < len(time_s)):
             print(f"  Warning: saccade {saccade_number} has out-of-range "
                   f"indices (onset_i={onset_i}, offset_i={offset_i}); "
@@ -167,22 +140,22 @@ def process_file(ed, input_path, output_dir, which_eye,
         offset_s = time_s.iloc[offset_i]
 
         ax.axvspan(onset_s, offset_s,
-                   alpha=0.3, color='orange',
+                   alpha=0.3, facecolor='orange',
                    edgecolor='darkorange', linewidth=0.8,
                    zorder=2,
                    label='Saccade' if not saccade_label_added else "")
         saccade_label_added = True
 
         # Annotate with the saccade number near the top of the plot,
-        # centred between the strip's edges.
+        # centred between the strip's edges. Use the axis limits directly
+        # so the annotation lands in the visible area even after clamping.
         mid_point = (onset_s + offset_s) / 2
+        y_top = ax.get_ylim()[1]
         ax.annotate(str(saccade_number),
-                    xy=(mid_point, ax.get_ylim()[1] * 0.95),
+                    xy=(mid_point, y_top * 0.95),
                     ha='center', fontsize=9, color='darkorange',
                     fontweight='bold', zorder=4)
 
-    # Legend must be added after the saccade strips so it picks up the
-    # 'Saccade' entry created inside the loop.
     ax.legend(loc='upper right', fontsize=11, framealpha=0.9)
 
     ax.set_title(
@@ -199,13 +172,9 @@ def process_file(ed, input_path, output_dir, which_eye,
     plt.savefig(output_plot, dpi=150, bbox_inches='tight')
     print(f"  Plot saved to: {output_plot}")
 
-    # ---- Show the plot in a pop-up window ----
-    # block=True makes the call block until the window is closed, so each
-    # file is reviewed one at a time before the loop continues.
     if show_plots:
         plt.show(block=True)
 
-    # Close the figure to free memory before processing the next file.
     plt.close(fig)
     return True
 
@@ -222,7 +191,6 @@ def main():
         print(f"No CSV files found in '{input_dir}'.")
         return
 
-    # Initialize the event detector once and reuse it across files.
     ed = EventDetection()
 
     succeeded = 0
@@ -239,7 +207,6 @@ def main():
             print(f"  Error processing {input_path}: {err}")
             failed += 1
 
-    # ---- Summary ----
     print()
     print("=" * 60)
     print(f"Processed {len(csv_files)} file(s): "
@@ -248,4 +215,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

@@ -46,7 +46,7 @@ import json
 import pygame
 import numpy as np
 
-from .misc import ET_ReturnCode, Calculator
+from .misc import ET_ReturnCode, Calculator, CameraMode
 from .callback import CalibrationListener
 
 logger = logging.getLogger(__name__)
@@ -288,10 +288,13 @@ class CalibrationUI:
         face_x_offset = 32.0 if self._pupil_io.config.active_eye in [-1, 'left'] else (
             -32.0 if self._pupil_io.config.active_eye in [1, 'right'] else 0.0)
 
-        # this works for the 400 hz ROI     "sync_400_roi": {"left": [220, 235], "right": [0, 235]},
+        # this works for the 400 hz ROI
         face_px_x = SCREEN_CENTER_X + (_face_position[0] - 172.08 + face_x_offset) * SCALE_X
-        # y_offset = 110.0 if self._pupil_io.config.sampling_rate == 200 else 130.0
-        y_offset = 80.0 if self._pupil_io.config.sampling_rate == 200 else 60.0
+        y_offset = 110.0 if self._pupil_io.config.sampling_rate == 200 else 130.0
+        if self._pupil_io.camera_mode == CameraMode.CAMERA_MODE_SYNC_200:
+            y_offset = 80
+
+        # y_offset = 80.0 if self._pupil_io.config.sampling_rate == 200 else 60.0
         face_px_y = SCREEN_CENTER_Y + (_face_position[1] - y_offset) * SCALE_Y
 
         instruction_text = ""

@@ -30,16 +30,14 @@
 # End-to-end smoke tests that boot the SDK through both supported UI backends
 # (Pygame and PsychoPy) by executing the bundled picture_viewing examples.
 #
-# These tests run against the REAL tracker — no simulation mode and no native
-# library substitution. They therefore require physical hardware (or the
-# appropriate dummy DLL installed under the package's ``lib`` directory) and a
-# display the backends can render into. The only things substituted are the
-# interactive parts of the flow: ``Pupilio.calibration_draw`` is replaced with a
-# headless ``AutoCalibrationUI``, and the backend event loops are scripted so the
-# examples advance without a human operator.
+# These tests run against the simulation tracker backend so they do not require
+# physical hardware in CI. The interactive parts of the flow are substituted:
+# ``Pupilio.calibration_draw`` is replaced with a headless ``AutoCalibrationUI``,
+# and the backend event loops are scripted so the examples advance without a human
+# operator.
 #
-# Passing means the SDK's real initialization path plus the example scripts'
-# public API usage still work end to end.
+# Passing means the SDK's initialization path plus the example scripts'
+# public API usage still work end to end across UI backends.
 
 # Author: GC Zhu
 # Email: zhugc2016@gmail.com
@@ -136,10 +134,19 @@ class TestPygameExample(_ExampleTestBase):
             cali_ui = AutoCalibrationUI(self_obj, ui_backend)
             cali_ui.draw(validate=validate, bg_color=bg_color, hands_free=hands_free)
 
+        orig_init = Pupilio.__init__
+        def mock_init(self_obj, config=None):
+            if config is None:
+                from pupilio import DefaultConfig
+                config = DefaultConfig()
+            config.simulation_mode = True
+            orig_init(self_obj, config)
+
         def mock_event_get():
             return [pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN)]
 
-        with patch.object(Pupilio, 'calibration_draw', mock_calibration_draw), \
+        with patch.object(Pupilio, '__init__', mock_init), \
+             patch.object(Pupilio, 'calibration_draw', mock_calibration_draw), \
              patch('pygame.event.get', side_effect=mock_event_get), \
              patch('pygame.time.wait', return_value=None):
             self._run_example('picture_viewing_pygame.py')
@@ -147,7 +154,7 @@ class TestPygameExample(_ExampleTestBase):
 
 class TestPsychoPyExample(_ExampleTestBase):
     """
-    Smoke-test the PsychoPy example script end to end against the real tracker.
+    Smoke-test the PsychoPy example script end to end against the simulation tracker.
 
     Skipped when PsychoPy is not installed. Scripts ``psychopy.event.getKeys`` with a
     constant Enter keypress and neutralises ``psychopy.core.wait`` so the run does not
@@ -175,10 +182,19 @@ class TestPsychoPyExample(_ExampleTestBase):
             cali_ui = AutoCalibrationUI(self_obj, ui_backend)
             cali_ui.draw(validate=validate, bg_color=bg_color, hands_free=hands_free)
 
+        orig_init = Pupilio.__init__
+        def mock_init(self_obj, config=None):
+            if config is None:
+                from pupilio import DefaultConfig
+                config = DefaultConfig()
+            config.simulation_mode = True
+            orig_init(self_obj, config)
+
         def mock_getKeys(*args, **kwargs):
             return ['return']
 
-        with patch.object(Pupilio, 'calibration_draw', mock_calibration_draw), \
+        with patch.object(Pupilio, '__init__', mock_init), \
+             patch.object(Pupilio, 'calibration_draw', mock_calibration_draw), \
              patch('psychopy.event.getKeys', side_effect=mock_getKeys), \
              patch('psychopy.core.wait', return_value=None):
             try:

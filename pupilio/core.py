@@ -120,7 +120,7 @@ class Pupilio:
             )
 
         # initialize get_camera_mode return value
-        self._camera_mode = None
+        self._camera_mode = CameraMode.CAMERA_MODE_SYNC_200
         self.left_roi = None
         self.right_roi = None
         self._is_initialized = False
@@ -294,10 +294,18 @@ class Pupilio:
             self.calibration_points = np.zeros(2 * 2, dtype=np.float32)
         elif self.config.cali_mode == CalibrationMode.FIVE_POINTS:
             self.calibration_points = np.zeros(2 * 5, dtype=np.float32)
+        elif self.config.cali_mode == CalibrationMode.NINE_POINTS:
+            self.calibration_points = np.zeros(2 * 9, dtype=np.float32)
         elif self.config.cali_mode == CalibrationMode.FOUR_POINTS:
+            # Deprecated path. DefaultConfig already redirects 4 -> 5, but keep this
+            # branch so a manually-constructed CalibrationMode.FOUR_POINTS still works.
             self.calibration_points = np.zeros(2 * 4, dtype=np.float32)
         else:
             self.calibration_points = np.zeros(2 * 2, dtype=np.float32)
+
+        ret = self._et_native_lib.pupil_io_set_cali_mode(
+            int(self.config.cali_mode), self.calibration_points
+        )
 
         ret = self._et_native_lib.pupil_io_set_cali_mode(self.config.cali_mode, self.calibration_points)
         if ret != ET_ReturnCode.ET_SUCCESS.value:
@@ -1031,6 +1039,11 @@ class Pupilio:
     # ------------------------------------------------------------------ #
     # Properties                                                         #
     # ------------------------------------------------------------------ #
+
+    @property
+    def camera_mode(self):
+        """Public read-only access to the current camera mode."""
+        return self._camera_mode
 
     @property
     def is_initialized(self) -> bool:

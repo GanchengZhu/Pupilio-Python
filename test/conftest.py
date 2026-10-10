@@ -28,7 +28,7 @@ def simulation_config():
     from pupilio import DefaultConfig
 
     config = DefaultConfig()
-    config.simulation_mode = False
+    config.simulation_mode = True
     return config
 
 
@@ -78,7 +78,6 @@ def pupil_io(simulation_config):
 
 
 @pytest.fixture
-@windows_only
 def pupil_io_real(real_hardware_config):
     """
     A live Pupilio backed by the real tracker, released on teardown.
@@ -87,10 +86,11 @@ def pupil_io_real(real_hardware_config):
     hardware to be present; a missing DLL or camera will raise from ``Pupilio(...)``,
     which the test should treat as a configuration error rather than a code failure.
     """
+    if not IS_WINDOWS:
+        pytest.skip("The Pupilio native library is Windows-only.")
     yield from _make_pupil_io(real_hardware_config)
 
 
-@pytest.fixture
 @pytest.fixture
 def pygame_screen():
     pygame = pytest.importorskip("pygame")

@@ -10,7 +10,7 @@ pupilio/__pycache__
 __pycache__
 .pytest_cache
 example/picture_viewing/calibration
-example/picture_viewing/data
+example/event_detection/data
 example/picture_viewing/log_et
 example/event_detection/output
 example/event_detection/output_test
